@@ -1,104 +1,127 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 
-const SLIDES = [
+const FEATURES = [
   {
-    emoji: '🛒',
-    titleBn: 'বাজার করুন ঘরে বসে',
-    titleEn: 'Shop from home',
-    bodyBn: 'লালমনিরহাটের যেকোনো এলাকা থেকে তাজা বাজার ও রেস্তোরাঁর খাবার অর্ডার করুন।',
-    bodyEn: 'Order fresh groceries and restaurant food from any area in Lalmonirhat.',
-    bg: 'bg-primary',
+    icon: 'storefront',
+    color: 'text-primary bg-primary/10',
+    titleBn: 'গোশালা বাজার থেকে তাজা পণ্য',
+    titleEn: 'Fresh from Goshala Bazar & local vendors',
   },
   {
-    emoji: '⚡',
-    titleBn: 'দ্রুত ডেলিভারি',
-    titleEn: 'Fast delivery',
-    bodyBn: 'অর্ডার দেওয়ার ৩০-৬০ মিনিটের মধ্যে আপনার দরজায় পৌঁছে দেওয়া হবে।',
-    bodyEn: 'Get your order delivered to your door within 30-60 minutes.',
-    bg: 'bg-secondary',
+    icon: 'currency_taka',
+    color: 'text-secondary bg-secondary/10',
+    titleBn: 'বাজারের আসল দাম, শুধু ডেলিভারি ফি',
+    titleEn: 'Zero product markup (Fixed fee starting ৳১৫)',
   },
   {
-    emoji: '📍',
-    titleBn: 'লাইভ ট্র্যাকিং',
-    titleEn: 'Live tracking',
-    bodyBn: 'রাইডারের লোকেশন রিয়েল-টাইমে দেখুন এবং অর্ডারের আপডেট পান।',
-    bodyEn: 'See your rider\'s location in real-time and get order updates.',
-    bg: 'bg-tertiary',
+    icon: 'pedal_bike',
+    color: 'text-tertiary bg-tertiary/10',
+    titleBn: 'পরিবেশবান্ধব বাইসাইকেল ডেলিভারি',
+    titleEn: 'Eco-friendly neighborhood bicycle dispatch',
   },
 ];
 
 export default function OnboardScreen() {
-  const { state, t } = useApp();
+  const { state } = useApp();
   const navigate = useNavigate();
-  const [current, setCurrent] = useState(0);
   const lang = state.lang;
 
-  const slide = SLIDES[current];
-  const isLast = current === SLIDES.length - 1;
-
-  const next = () => {
-    if (isLast) navigate('/login', { replace: true });
-    else setCurrent(c => c + 1);
-  };
-
-  const skip = () => navigate('/login', { replace: true });
-
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Slide */}
-      <div className={clsx('flex-1 flex flex-col items-center justify-center gap-6 px-8', slide.bg)}>
-        {/* Skip */}
-        <button
-          onClick={skip}
-          className="absolute top-5 right-5 text-white/70 text-label-md"
-        >
-          {lang === 'bn' ? 'এড়িয়ে যান' : 'Skip'}
-        </button>
-
-        {/* Icon */}
-        <div className="w-36 h-36 rounded-[40px] bg-white/20 flex items-center justify-center text-[72px]">
-          {slide.emoji}
-        </div>
-
-        {/* Text */}
-        <div className="text-center">
-          <h2 className="text-headline-lg font-bold text-white">
-            {lang === 'bn' ? slide.titleBn : slide.titleEn}
-          </h2>
-          <p className="text-body-lg text-white/80 mt-2 leading-relaxed">
-            {lang === 'bn' ? slide.bodyBn : slide.bodyEn}
-          </p>
+    <div
+      className="flex-1 flex flex-col overflow-hidden"
+      style={{ background: 'linear-gradient(160deg, #e6f4ec 0%, #f0faf4 40%, #fafffe 100%)' }}
+    >
+      {/* Location pill */}
+      <div className="flex justify-center pt-10 pb-2 px-6">
+        <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-primary/15 rounded-full px-4 py-2 shadow-sm">
+          <span className="material-symbols-outlined text-primary text-[16px]">location_on</span>
+          <span className="text-label-md font-semibold text-on-surface">
+            লালমনিরহাট সদর
+          </span>
+          <span className="text-on-surface-variant text-label-sm">·</span>
+          <span className="text-label-sm text-on-surface-variant">Lalmonirhat Sadar</span>
         </div>
       </div>
 
-      {/* Bottom */}
-      <div className="bg-surface px-6 py-8 flex flex-col gap-5">
-        {/* Dots */}
-        <div className="flex justify-center gap-2">
-          {SLIDES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrent(i)}
-              className={clsx(
-                'rounded-full transition-all duration-300',
-                i === current ? 'w-6 h-2 bg-primary' : 'w-2 h-2 bg-outline-variant',
-              )}
-            />
-          ))}
+      {/* App icon + branding */}
+      <div className="flex flex-col items-center gap-3 pt-6 pb-4">
+        {/* Icon */}
+        <div className="w-[96px] h-[96px] rounded-[26px] bg-primary flex items-center justify-center shadow-lg relative"
+          style={{ boxShadow: '0 8px 32px rgba(29,157,87,0.35)' }}
+        >
+          <span className="material-symbols-outlined text-white text-[52px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+            pedal_bike
+          </span>
+          {/* shopping bag badge */}
+          <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-secondary flex items-center justify-center shadow-md">
+            <span className="material-symbols-outlined text-white text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              shopping_bag
+            </span>
+          </div>
         </div>
 
-        {/* CTA */}
+        {/* Name */}
+        <div className="text-center">
+          <h1 className="text-[38px] font-black text-primary leading-none tracking-tight">Jovro</h1>
+          <p className="text-[18px] font-bold text-on-surface/70 mt-1 tracking-wide">জভ্রো</p>
+        </div>
+
+        {/* Tagline */}
+        <div className="text-center px-8">
+          <p className="text-body-lg font-semibold text-on-surface">বাজার আর খাবার, ঘরে বসেই</p>
+          <p className="text-label-md text-on-surface-variant mt-0.5">Groceries &amp; food, delivered to your door</p>
+        </div>
+      </div>
+
+      {/* Feature cards */}
+      <div className="flex-1 flex flex-col justify-center gap-3 px-5">
+        {FEATURES.map((f, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-4 bg-white/70 backdrop-blur-sm border border-white rounded-2xl px-4 py-3.5 shadow-sm"
+          >
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${f.color}`}>
+              <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                {f.icon}
+              </span>
+            </div>
+            <div className="flex-1">
+              <p className="text-body-sm font-semibold text-on-surface leading-snug">
+                {lang === 'bn' ? f.titleBn : f.titleEn}
+              </p>
+              {lang === 'bn' && (
+                <p className="text-label-sm text-on-surface-variant mt-0.5 leading-snug">{f.titleEn}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* CTA */}
+      <div className="px-5 pb-8 pt-5">
         <button
-          onClick={next}
-          className="w-full py-4 rounded-2xl bg-primary text-white text-label-lg font-bold active:bg-primary/90 transition-colors"
+          onClick={() => navigate('/login', { replace: true })}
+          className="w-full py-4 rounded-2xl bg-primary text-white flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-md"
+          style={{ boxShadow: '0 6px 24px rgba(29,157,87,0.3)' }}
         >
-          {isLast
-            ? (lang === 'bn' ? 'শুরু করুন' : 'Get Started')
-            : (lang === 'bn' ? 'পরবর্তী' : 'Next')}
+          <span className="text-label-lg font-bold">অ্যাপে প্রবেশ করুন</span>
+          <span className="text-white/50">|</span>
+          <span className="text-label-md font-semibold text-white/90">Get Started</span>
+          <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
         </button>
+
+        {/* Status */}
+        <div className="flex flex-col items-center gap-1 mt-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            <p className="text-label-sm text-on-surface-variant">
+              {lang === 'bn' ? 'সার্ভার সংযুক্ত · সার্ভিসের জন্য প্রস্তুত' : 'Server connected · Ready for service'}
+            </p>
+          </div>
+          <p className="text-label-sm text-on-surface-variant/50">v1.2.0 · Lalmonirhat District</p>
+        </div>
       </div>
     </div>
   );
