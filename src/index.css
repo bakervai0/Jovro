@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
+@layer base {
+  html, body {
+    font-family: 'Noto Sans', 'Hind Siliguri', sans-serif;
+    background-color: #FAFAF7;
+    color: #1a1c1e;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  /* No scrollbar utility */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Material Symbols */
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined', sans-serif;
+    font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1;
+    user-select: none;
+  }
+  .filled-symbol {
+    font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+  }
+
+  /* App frame — phone-width column on desktop */
+  .app-frame {
+    @apply w-full max-w-app mx-auto min-h-screen bg-background relative flex flex-col;
+    border-left: 1px solid rgba(189,202,188,0.2);
+    border-right: 1px solid rgba(189,202,188,0.2);
+    box-shadow: 0 0 40px rgba(0,0,0,0.12);
+  }
+
+  /* Screen transitions */
+  .screen-enter {
+    animation: slideInRight 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  .screen-exit {
+    animation: slideOutLeft 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  /* Card shadows */
+  .card-shadow {
+    box-shadow: 0 1px 3px rgba(43,45,47,0.06), 0 1px 2px rgba(43,45,47,0.04);
+  }
+  .elevated-bar {
+    box-shadow: 0 -4px 14px rgba(43,45,47,0.09);
+  }
+  .modal-shadow {
+    box-shadow: 0 8px 32px rgba(43,45,47,0.18);
+  }
+
+  /* Bangla text rendering */
+  .bn {
+    font-family: 'Hind Siliguri', 'Noto Sans', sans-serif;
+  }
+
+  /* Bottom nav safe area */
+  .pb-nav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Sticky bottom navigation */
+  .bottom-nav {
+    @apply fixed bottom-0 z-50 bg-surface-container-lowest border-t border-outline-variant/30;
+    width: 100%;
+    max-width: 430px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -4px 14px rgba(43,45,47,0.09);
+  }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideOutLeft {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(-100%); opacity: 0; }
+}
+@keyframes slideInUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29,157,87,0.4); }
+  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(29,157,87,0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29,157,87,0); }
+}
+
+/* Desktop background */
+@media (min-width: 431px) {
+  body {
+    background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f4 50%, #e3f2f7 100%);
+  }
+}
