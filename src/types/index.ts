@@ -156,6 +156,12 @@ export interface Order {
   items: OrderItem[];
   productsTotal: number;   // sum of approx prices
   deliveryFee: number;
+  /** What the rider actually earned for this delivery, frozen
+   *  at delivery time: deliveryFee − company cut (owner's
+   *  per-delivery cut model, Oct 23). Absent on orders that
+   *  were seeded or delivered before the cut existed — readers
+   *  fall back to fee − current cut (see orderUtils). */
+  riderEarning?: number;
   discountAmount: number;
   promoCode?: string;
   finalTotal: number;
@@ -209,6 +215,8 @@ export interface Rider {
   rating: number;
   joinedAt: string;
   pendingPayout: number;
+  /** On-duty switch (RiderHomeScreen). Undefined = on duty. */
+  dutyOn?: boolean;
 }
 
 export interface PaymentRequest {
@@ -401,6 +409,16 @@ export interface SubscriptionInterest {
 export interface AdminSettings {
   serviceHours: string;
   deliverySlots: string[];
+  /** Rider intake control (owner, Oct 23): when false — or when
+   *  the active+pending rider count reaches riderCap — the
+   *  /apply-rider form is replaced by a closed notice. */
+  riderIntakeOpen: boolean;
+  riderCap: number;
+  /** Company cut kept from every delivery fee (owner, Oct 23):
+   *  rider earns deliveryFee − cut; the cut accrues to the
+   *  company fund below. Riders are paid monthly from office. */
+  companyCutPerDelivery: number;
+  companyFundTotal: number;
   passPrice: number;
   passDeliveries: number;
   passActive: boolean;
