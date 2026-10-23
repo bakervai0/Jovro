@@ -78,6 +78,7 @@ type Action =
   | { type: 'DELETE_ADDRESS'; id: string }
   | { type: 'TOGGLE_FAVOURITE'; productId: string }
   | { type: 'TOGGLE_SERVICE' }
+  | { type: 'SET_SERVICE_OVERRIDE'; override: 'auto' | 'open' | 'closed' }
   | { type: 'SERVICE_TICK' }
   | { type: 'TOGGLE_SLOT' }
   | { type: 'UPDATE_PROFILE'; user: User }
@@ -232,6 +233,16 @@ function reducer(state: AppState, action: Action): AppState {
       const override = state.isServiceOpen ? 'closed' as const : 'open' as const;
       return { ...state, serviceOverride: override, isServiceOpen: override === 'open' };
     }
+    case 'SET_SERVICE_OVERRIDE': {
+      // Explicit tri-state from admin settings: 'auto' hands the
+      // open/closed decision back to the service-hours clock.
+      const o = action.override;
+      return {
+        ...state,
+        serviceOverride: o,
+        isServiceOpen: o === 'auto' ? isWithinServiceHours() : o === 'open',
+      };
+    }
     case 'SERVICE_TICK': {
       if (state.serviceOverride !== 'auto') return state;
       const open = isWithinServiceHours();
@@ -338,7 +349,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (saved.activityLog) hydrated.activityLog = saved.activityLog;
       if (saved.restaurants) hydrated.restaurants = saved.restaurants;
       if (saved.promos) hydrated.promos = saved.promos;
-      if (saved.adminSettings) hydrated.adminSettings = saved.adminSettings;
+      if (saved.adminSettings) hydrated.adminSettings = { ...DEFAULT_ADMIN_SETTINGS, ...saved.adminSettings };
       if (saved.notifications) hydrated.notifications = saved.notifications;
       if (saved.addresses) hydrated.addresses = saved.addresses;
       if (saved.appliedPromo !== undefined) hydrated.appliedPromo = saved.appliedPromo;
