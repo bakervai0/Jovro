@@ -7,7 +7,18 @@
 // ============================================================
 import { PRODUCTS } from '../data/products';
 import { DELIVERY_AREAS } from '../data/areas';
-import type { Product, Order } from '../types';
+import type { Product, Order, DeliveryArea } from '../types';
+
+// ── Live catalogue (Phase 5 groundwork) ─────────────────────
+// The AI reads from AppContext state (state.products / state.areas)
+// once AiScreen registers it, so admin product/area edits flow
+// through here too. Falls back to the seed data.
+let CATALOGUE: Product[] = PRODUCTS;
+let AREA_LIST: DeliveryArea[] = DELIVERY_AREAS;
+export function setAiCatalogue(products: Product[], areas: DeliveryArea[]): void {
+  if (products.length > 0) CATALOGUE = products;
+  if (areas.length > 0) AREA_LIST = areas;
+}
 
 // ── Bengali digit / number handling ───────────────────────────
 const BN_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
@@ -82,7 +93,7 @@ export function scoreProduct(product: Product, rawText: string): number {
 }
 
 export function matchProducts(text: string, limit = 4, availableOnly = false): Product[] {
-  return PRODUCTS
+  return CATALOGUE
     .map(p => ({ p, score: scoreProduct(p, text) }))
     .filter(({ p, score }) => score >= 45 && (!availableOnly || p.isAvailable))
     .sort((a, b) => b.score - a.score || (b.p.tags?.includes('popular') ? 1 : 0) - (a.p.tags?.includes('popular') ? 1 : 0))
@@ -130,7 +141,7 @@ export interface BudgetBundle {
 }
 
 export function buildBudgetBundle(budget: number): BudgetBundle {
-  const available = PRODUCTS.filter(p => p.isAvailable);
+  const available = CATALOGUE.filter(p => p.isAvailable);
   // Popular first, then cheaper first — greedy fill, 1 unit each.
   const ordered = [...available].sort((a, b) => {
     const ap = a.tags?.includes('popular') ? 0 : 1;
@@ -163,10 +174,10 @@ export function getAddonSuggestions(cartProductIds: string[], limit = 3): Produc
   const inCart = new Set(cartProductIds);
   const suggestions: Product[] = [];
   for (const id of cartProductIds) {
-    const product = PRODUCTS.find(p => p.id === id);
+    const product = CATALOGUE.find(p => p.id === id);
     if (!product) continue;
     for (const addonId of ADDON_PAIRS[product.category] ?? []) {
-      const addon = PRODUCTS.find(p => p.id === addonId);
+      const addon = CATALOGUE.find(p => p.id === addonId);
       if (addon && addon.isAvailable && !inCart.has(addon.id) && !suggestions.find(s => s.id === addon.id)) {
         suggestions.push(addon);
       }
@@ -174,7 +185,7 @@ export function getAddonSuggestions(cartProductIds: string[], limit = 3): Produc
   }
   // Top up with popular available items not in the cart
   if (suggestions.length < limit) {
-    for (const p of PRODUCTS) {
+    for (const p of CATALOGUE) {
       if (suggestions.length >= limit) break;
       if (p.isAvailable && p.tags?.includes('popular') && !inCart.has(p.id) && !suggestions.find(s => s.id === p.id)) {
         suggestions.push(p);
@@ -195,7 +206,7 @@ export function getReorderLines(orders: Order[]): ParsedLine[] {
   const lines: ParsedLine[] = [];
   for (const item of past.items) {
     if (item.source !== 'bazaar') continue;
-    const product = PRODUCTS.find(p => p.nameBn === item.nameBn) ?? bestProduct(item.nameBn);
+    const product = CATALOGUE.find(p => p.nameBn === item.nameBn) ?? bestProduct(item.nameBn);
     if (product && product.isAvailable && !lines.find(l => l.product.id === product.id)) {
       lines.push({ product, qty: item.quantity });
     }
@@ -272,7 +283,7 @@ export function respondToMessage(
 
   // Delivery area / fee question — only seeded area data
   if (text.includes('এলাকা') || text.includes('ডেলিভারি ফি') || lower.includes('delivery') || lower.includes('area')) {
-    const areaHit = DELIVERY_AREAS.find(a => text.includes(a.nameBn) || lower.includes(a.nameEn.toLowerCase()));
+    const areaHit = AREA_LIST.find(a => text.includes(a.nameBn) || lower.includes(a.nameEn.toLowerCase()));
     if (areaHit) {
       return {
         messageBn: `হ্যাঁ, ${areaHit.nameBn} এলাকায় ডেলিভারি আছে। ডেলিভারি ফি ৳${areaHit.fee}।`,
@@ -281,11 +292,11 @@ export function respondToMessage(
         suggestions: DEFAULT_SUGGESTIONS,
       };
     }
-    const townFees = DELIVERY_AREAS.filter(a => a.zone === 'town').map(a => a.fee);
-    const unionFees = DELIVERY_AREAS.filter(a => a.zone === 'union').map(a => a.fee);
+    const townFees = AREA_LIST.filter(a => a.zone === 'town').map(a => a.fee);
+    const unionFees = AREA_LIST.filter(a => a.zone === 'union').map(a => a.fee);
     return {
-      messageBn: `আমরা লালমনিরহাট সদরের মোট ${DELIVERY_AREAS.length}টি এলাকায় ডেলিভারি দিই। শহরে ফি ৳${Math.min(...townFees)}–${Math.max(...townFees)}, ইউনিয়নে ৳${Math.min(...unionFees)}–${Math.max(...unionFees)}। সব এলাকার তালিকা প্রোফাইলের "ডেলিভারি ফি তালিকা" পেজে আছে।`,
-      messageEn: `We deliver to ${DELIVERY_AREAS.length} areas in Lalmonirhat Sadar. Town fees are ৳${Math.min(...townFees)}–${Math.max(...townFees)}, union fees ৳${Math.min(...unionFees)}–${Math.max(...unionFees)}. See the full list on the Delivery Fee Table page in Profile.`,
+      messageBn: `আমরা লালমনিরহাট সদরের মোট ${AREA_LIST.length}টি এলাকায় ডেলিভারি দিই। শহরে ফি ৳${Math.min(...townFees)}–${Math.max(...townFees)}, ইউনিয়নে ৳${Math.min(...unionFees)}–${Math.max(...unionFees)}। সব এলাকার তালিকা প্রোফাইলের "ডেলিভারি ফি তালিকা" পেজে আছে।`,
+      messageEn: `We deliver to ${AREA_LIST.length} areas in Lalmonirhat Sadar. Town fees are ৳${Math.min(...townFees)}–${Math.max(...townFees)}, union fees ৳${Math.min(...unionFees)}–${Math.max(...unionFees)}. See the full list on the Delivery Fee Table page in Profile.`,
       added: none,
       suggestions: DEFAULT_SUGGESTIONS,
     };

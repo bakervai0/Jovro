@@ -1,10 +1,18 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
 import type {
   User, UserRole, Lang, CartItem, Order, AppNotification,
-  SavedAddress, PromoCode
+  SavedAddress, PromoCode, Rider, Affiliate, StaffMember,
+  ProblemReport, Review, PaymentRequest, Product, DeliveryArea,
+  ActivityLogEntry, Restaurant, AdminSettings
 } from '../types';
-import { DEMO_USERS, SAMPLE_ORDERS, SAMPLE_NOTIFICATIONS, SAMPLE_ADDRESSES, PROMO_CODES } from '../data/seed';
+import {
+  DEMO_USERS, SAMPLE_ORDERS, SAMPLE_NOTIFICATIONS, SAMPLE_ADDRESSES, PROMO_CODES,
+  SAMPLE_RIDERS, SAMPLE_AFFILIATES, SAMPLE_STAFF, SAMPLE_PROBLEM_REPORTS,
+  SAMPLE_REVIEWS, SAMPLE_PAYMENT_REQUESTS, ACTIVITY_LOG_SEED, DEFAULT_ADMIN_SETTINGS
+} from '../data/seed';
 import { DELIVERY_AREAS } from '../data/areas';
+import { PRODUCTS } from '../data/products';
+import { RESTAURANTS } from '../data/restaurants';
 import { useT } from '../i18n';
 
 // ── State Shape ────────────────────────────────────────────────
@@ -23,6 +31,20 @@ interface AppState {
   notifications: AppNotification[];
   addresses: SavedAddress[];
   favouriteProductIds: string[];
+  // Shared collections (Phase 5 groundwork — consumed by rider /
+  // operator / affiliate sections now, admin section in Part 2)
+  riders: Rider[];
+  affiliates: Affiliate[];
+  staff: StaffMember[];
+  problemReports: ProblemReport[];
+  reviews: Review[];
+  paymentRequests: PaymentRequest[];
+  products: Product[];
+  areas: DeliveryArea[];
+  activityLog: ActivityLogEntry[];
+  restaurants: Restaurant[];
+  promos: PromoCode[];
+  adminSettings: AdminSettings;
   // App state
   selectedAreaId: string;
   appliedPromo: PromoCode | null;
@@ -52,6 +74,32 @@ type Action =
   | { type: 'TOGGLE_SERVICE' }
   | { type: 'TOGGLE_SLOT' }
   | { type: 'UPDATE_PROFILE'; user: User }
+  // Phase 5 shared collections
+  | { type: 'ADD_RIDER'; rider: Rider }
+  | { type: 'UPDATE_RIDER'; rider: Rider }
+  | { type: 'ADD_AFFILIATE'; affiliate: Affiliate }
+  | { type: 'UPDATE_AFFILIATE'; affiliate: Affiliate }
+  | { type: 'ADD_STAFF'; member: StaffMember }
+  | { type: 'UPDATE_STAFF'; member: StaffMember }
+  | { type: 'ADD_PROBLEM_REPORT'; report: ProblemReport }
+  | { type: 'UPDATE_PROBLEM_REPORT'; report: ProblemReport }
+  | { type: 'ADD_PAYMENT_REQUEST'; request: PaymentRequest }
+  | { type: 'UPDATE_PAYMENT_REQUEST'; request: PaymentRequest }
+  | { type: 'ADD_PRODUCT'; product: Product }
+  | { type: 'UPDATE_PRODUCT'; product: Product }
+  | { type: 'DELETE_PRODUCT'; id: string }
+  | { type: 'UPDATE_AREA'; area: DeliveryArea }
+  | { type: 'ADD_REVIEW'; review: Review }
+  | { type: 'UPDATE_REVIEW'; review: Review }
+  | { type: 'LOG_ACTIVITY'; entry: ActivityLogEntry }
+  | { type: 'ADD_APPLICATION'; rider?: Rider; affiliate?: Affiliate }
+  | { type: 'ADD_NOTIFICATION'; notification: AppNotification }
+  | { type: 'ADD_RESTAURANT'; restaurant: Restaurant }
+  | { type: 'UPDATE_RESTAURANT'; restaurant: Restaurant }
+  | { type: 'DELETE_RESTAURANT'; id: string }
+  | { type: 'ADD_PROMO'; promo: PromoCode }
+  | { type: 'UPDATE_PROMO'; promo: PromoCode }
+  | { type: 'UPDATE_ADMIN_SETTINGS'; settings: AdminSettings }
   | { type: 'HYDRATE'; state: Partial<AppState> };
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -63,6 +111,27 @@ function lsSet(key: string, val: unknown) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* noop */ }
 }
 
+/** Slices persisted together so cross-role demo flows (assign →
+ * rider view, report → admin inbox) survive the role switcher's
+ * full-page navigation. */
+const DATA_KEY = 'jovro_data_v5';
+interface PersistedData {
+  orders: Order[];
+  riders: Rider[];
+  affiliates: Affiliate[];
+  staff: StaffMember[];
+  problemReports: ProblemReport[];
+  reviews: Review[];
+  paymentRequests: PaymentRequest[];
+  products: Product[];
+  areas: DeliveryArea[];
+  activityLog: ActivityLogEntry[];
+  restaurants: Restaurant[];
+  promos: PromoCode[];
+  adminSettings: AdminSettings;
+  notifications: AppNotification[];
+}
+
 const INITIAL: AppState = {
   user: null, role: 'customer', lang: 'bn', isLoggedIn: false,
   isServiceOpen: true, isSlotFull: false,
@@ -70,6 +139,18 @@ const INITIAL: AppState = {
   notifications: SAMPLE_NOTIFICATIONS,
   addresses: SAMPLE_ADDRESSES,
   favouriteProductIds: [],
+  riders: SAMPLE_RIDERS,
+  affiliates: SAMPLE_AFFILIATES,
+  staff: SAMPLE_STAFF,
+  problemReports: SAMPLE_PROBLEM_REPORTS,
+  reviews: SAMPLE_REVIEWS,
+  paymentRequests: SAMPLE_PAYMENT_REQUESTS,
+  products: PRODUCTS,
+  areas: DELIVERY_AREAS,
+  activityLog: ACTIVITY_LOG_SEED,
+  restaurants: RESTAURANTS,
+  promos: PROMO_CODES,
+  adminSettings: DEFAULT_ADMIN_SETTINGS,
   selectedAreaId: 'area-01',
   appliedPromo: null,
 };
@@ -121,6 +202,38 @@ function reducer(state: AppState, action: Action): AppState {
     case 'TOGGLE_SERVICE': return { ...state, isServiceOpen: !state.isServiceOpen };
     case 'TOGGLE_SLOT': return { ...state, isSlotFull: !state.isSlotFull };
 
+    // Phase 5 shared collections
+    case 'ADD_RIDER': return { ...state, riders: [action.rider, ...state.riders] };
+    case 'UPDATE_RIDER': return { ...state, riders: state.riders.map(r => r.id === action.rider.id ? action.rider : r) };
+    case 'ADD_AFFILIATE': return { ...state, affiliates: [action.affiliate, ...state.affiliates] };
+    case 'UPDATE_AFFILIATE': return { ...state, affiliates: state.affiliates.map(a => a.id === action.affiliate.id ? action.affiliate : a) };
+    case 'ADD_STAFF': return { ...state, staff: [action.member, ...state.staff] };
+    case 'UPDATE_STAFF': return { ...state, staff: state.staff.map(m => m.id === action.member.id ? action.member : m) };
+    case 'ADD_PROBLEM_REPORT': return { ...state, problemReports: [action.report, ...state.problemReports] };
+    case 'UPDATE_PROBLEM_REPORT': return { ...state, problemReports: state.problemReports.map(r => r.id === action.report.id ? action.report : r) };
+    case 'ADD_PAYMENT_REQUEST': return { ...state, paymentRequests: [action.request, ...state.paymentRequests] };
+    case 'UPDATE_PAYMENT_REQUEST': return { ...state, paymentRequests: state.paymentRequests.map(r => r.id === action.request.id ? action.request : r) };
+    case 'ADD_PRODUCT': return { ...state, products: [action.product, ...state.products] };
+    case 'UPDATE_PRODUCT': return { ...state, products: state.products.map(p => p.id === action.product.id ? action.product : p) };
+    case 'DELETE_PRODUCT': return { ...state, products: state.products.filter(p => p.id !== action.id) };
+    case 'UPDATE_AREA': return { ...state, areas: state.areas.map(a => a.id === action.area.id ? action.area : a) };
+    case 'ADD_REVIEW': return { ...state, reviews: [action.review, ...state.reviews] };
+    case 'UPDATE_REVIEW': return { ...state, reviews: state.reviews.map(r => r.id === action.review.id ? action.review : r) };
+    case 'LOG_ACTIVITY': return { ...state, activityLog: [action.entry, ...state.activityLog] };
+    case 'ADD_NOTIFICATION': return { ...state, notifications: [action.notification, ...state.notifications] };
+    case 'ADD_RESTAURANT': return { ...state, restaurants: [action.restaurant, ...state.restaurants] };
+    case 'UPDATE_RESTAURANT': return { ...state, restaurants: state.restaurants.map(r => r.id === action.restaurant.id ? action.restaurant : r) };
+    case 'DELETE_RESTAURANT': return { ...state, restaurants: state.restaurants.filter(r => r.id !== action.id) };
+    case 'ADD_PROMO': return { ...state, promos: [action.promo, ...state.promos] };
+    case 'UPDATE_PROMO': return { ...state, promos: state.promos.map(pr => pr.code === action.promo.code ? action.promo : pr) };
+    case 'UPDATE_ADMIN_SETTINGS': return { ...state, adminSettings: action.settings };
+    case 'ADD_APPLICATION': {
+      let next = state;
+      if (action.rider) next = { ...next, riders: [action.rider, ...next.riders] };
+      if (action.affiliate) next = { ...next, affiliates: [action.affiliate, ...next.affiliates] };
+      return next;
+    }
+
     default: return state;
   }
 }
@@ -136,7 +249,7 @@ interface AppContextType {
   cartDiscount: number;
   cartFinal: number;
   unreadCount: number;
-  currentArea: typeof DELIVERY_AREAS[0] | undefined;
+  currentArea: DeliveryArea | undefined;
   // Helpers
   validatePromo: (code: string) => PromoCode | null;
   t: (key: string) => string;
@@ -144,12 +257,17 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+function dayjsExpired(iso: string): boolean {
+  return new Date(iso).getTime() < Date.now();
+}
+
 // ── Provider ───────────────────────────────────────────────────
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
 
   // Hydrate from localStorage
   useEffect(() => {
+    const saved = lsGet<Partial<PersistedData> | null>(DATA_KEY, null);
     const hydrated: Partial<AppState> = {
       lang: lsGet<Lang>('jovro_lang', 'bn'),
       role: lsGet<UserRole>('jovro_role', 'customer'),
@@ -159,6 +277,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       favouriteProductIds: lsGet<string[]>('jovro_favs', []),
       selectedAreaId: lsGet<string>('jovro_area', 'area-01'),
     };
+    if (saved) {
+      if (saved.orders) hydrated.orders = saved.orders;
+      if (saved.riders) hydrated.riders = saved.riders;
+      if (saved.affiliates) hydrated.affiliates = saved.affiliates;
+      if (saved.staff) hydrated.staff = saved.staff;
+      if (saved.problemReports) hydrated.problemReports = saved.problemReports;
+      if (saved.reviews) hydrated.reviews = saved.reviews;
+      if (saved.paymentRequests) hydrated.paymentRequests = saved.paymentRequests;
+      if (saved.products) hydrated.products = saved.products;
+      if (saved.areas) hydrated.areas = saved.areas;
+      if (saved.activityLog) hydrated.activityLog = saved.activityLog;
+      if (saved.restaurants) hydrated.restaurants = saved.restaurants;
+      if (saved.promos) hydrated.promos = saved.promos;
+      if (saved.adminSettings) hydrated.adminSettings = saved.adminSettings;
+      if (saved.notifications) hydrated.notifications = saved.notifications;
+    }
     if (hydrated.isLoggedIn && !hydrated.user && hydrated.role) {
       hydrated.user = DEMO_USERS[hydrated.role as UserRole] ?? DEMO_USERS.customer;
     }
@@ -173,9 +307,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { lsSet('jovro_cart', state.cart); }, [state.cart]);
   useEffect(() => { lsSet('jovro_favs', state.favouriteProductIds); }, [state.favouriteProductIds]);
   useEffect(() => { lsSet('jovro_area', state.selectedAreaId); }, [state.selectedAreaId]);
+  useEffect(() => {
+    const data: PersistedData = {
+      orders: state.orders,
+      riders: state.riders,
+      affiliates: state.affiliates,
+      staff: state.staff,
+      problemReports: state.problemReports,
+      reviews: state.reviews,
+      paymentRequests: state.paymentRequests,
+      products: state.products,
+      areas: state.areas,
+      activityLog: state.activityLog,
+      restaurants: state.restaurants,
+      promos: state.promos,
+      adminSettings: state.adminSettings,
+      notifications: state.notifications,
+    };
+    lsSet(DATA_KEY, data);
+  }, [state.orders, state.riders, state.affiliates, state.staff, state.problemReports,
+      state.reviews, state.paymentRequests, state.products, state.areas, state.activityLog,
+      state.restaurants, state.promos, state.adminSettings, state.notifications]);
 
   // Computed values
-  const currentArea = DELIVERY_AREAS.find(a => a.id === state.selectedAreaId);
+  const currentArea = state.areas.find(a => a.id === state.selectedAreaId);
   const cartDeliveryFee = currentArea?.fee ?? 20;
 
   const cartTotal = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -185,6 +340,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   if (state.appliedPromo) {
     const p = state.appliedPromo;
     if (p.discountType === 'flat') cartDiscount = p.discountValue;
+    else if (p.discountType === 'free-delivery') cartDiscount = cartDeliveryFee;
     else cartDiscount = Math.min(Math.floor(cartTotal * p.discountValue / 100), p.maxDiscount ?? Infinity);
   }
 
@@ -192,11 +348,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = state.notifications.filter(n => !n.isRead).length;
 
   const validatePromo = useCallback((code: string): PromoCode | null => {
-    const promo = PROMO_CODES.find(p => p.code.toUpperCase() === code.toUpperCase() && p.isActive);
+    const promo = state.promos.find(p => p.code.toUpperCase() === code.toUpperCase() && p.isActive);
     if (!promo) return null;
+    if (promo.expiresAt && dayjsExpired(promo.expiresAt)) return null;
+    if (promo.usageLimit && (promo.usedCount ?? 0) >= promo.usageLimit) return null;
     if (cartTotal < promo.minOrder) return null;
     return promo;
-  }, [cartTotal]);
+  }, [cartTotal, state.promos]);
 
   const t = useT(state.lang);
 
