@@ -377,9 +377,18 @@ export default function HomeScreen() {
                 ? (bn ? 'আজকের সব স্লট পূর্ণ — কালকের জন্য আগাম অর্ডার করুন' : 'Today’s slots are full — pre-order for tomorrow')
                 : (bn ? 'এখন সার্ভিস বন্ধ • আগামীকাল সকাল ৬:০০ টায় আবার খুলবে' : 'Service closed • opens tomorrow at 6:00 AM')}
             </p>
-            <button onClick={() => navigate('/bazaar')} className="mt-2 rounded-full bg-primary px-3 py-1.5 text-[11.5px] font-semibold text-white">
-              {bn ? 'আগাম অর্ডার করুন' : 'Pre-order now'}
-            </button>
+            <div className="mt-2 flex items-center gap-2">
+              <button onClick={() => navigate('/bazaar')} className="rounded-full bg-primary px-3 py-1.5 text-[11.5px] font-semibold text-white active:scale-95">
+                {bn ? 'আগাম অর্ডার করুন' : 'Pre-order now'}
+              </button>
+              <button
+                onClick={() => navigate(state.isServiceOpen ? '/slot-full' : '/closed')}
+                className="flex items-center gap-0.5 rounded-full border border-secondary/30 px-2.5 py-1.5 text-[11.5px] font-semibold text-secondary active:scale-95"
+              >
+                {bn ? 'বিস্তারিত' : 'Details'}
+                <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+              </button>
+            </div>
           </div>
         )}
 

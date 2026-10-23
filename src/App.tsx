@@ -52,6 +52,9 @@ const PrivacyScreen = lazy(() => import('./screens/info/PrivacyScreen'));
 const TermsScreen = lazy(() => import('./screens/info/TermsScreen'));
 const RefundPolicyScreen = lazy(() => import('./screens/info/RefundPolicyScreen'));
 const DeliveryFeesScreen = lazy(() => import('./screens/info/DeliveryFeesScreen'));
+const NoInternetScreen = lazy(() => import('./screens/customer/NoInternetScreen'));
+const ServiceClosedScreen = lazy(() => import('./screens/customer/ServiceClosedScreen'));
+const SlotFullScreen = lazy(() => import('./screens/customer/SlotFullScreen'));
 
 const RiderHomeScreen = lazy(() => import('./screens/rider/RiderHomeScreen'));
 const RiderOrderDetailScreen = lazy(() => import('./screens/rider/RiderOrderDetailScreen'));
@@ -177,6 +180,9 @@ function AppRoutes() {
           {/* Phase 4 */}
           <Route path="/ai" element={<AiScreen />} />
           <Route path="/ai/busy" element={<AiBusyScreen />} />
+          <Route path="/offline" element={<NoInternetScreen />} />
+          <Route path="/closed" element={<ServiceClosedScreen />} />
+          <Route path="/slot-full" element={<SlotFullScreen />} />
           <Route path="/report" element={<ReportScreen />} />
           <Route path="/refer" element={<ReferScreen />} />
           <Route path="/subscription" element={<SubscriptionScreen />} />

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import type { UserRole } from '../../types';
@@ -13,6 +14,7 @@ const ROLES: { role: UserRole; labelBn: string; labelEn: string; icon: string; c
 
 export function DemoRoleSwitcher() {
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const lang = state.lang;
 
@@ -21,15 +23,17 @@ export function DemoRoleSwitcher() {
   const switchRole = (role: UserRole) => {
     dispatch({ type: 'SET_ROLE', role });
     setExpanded(false);
-    // Land on the selected role's own home so its shell opens
-    // (customer '/', rider '/rider', affiliate '/affiliate',
-    // staff '/staff', admin '/admin'). Full-page navigation is
-    // intentional: the persisted demo slices reload consistently.
+    // Write the session slices synchronously as well — navigation can
+    // happen before React's persistence effects flush.
+    try {
+      localStorage.setItem('jovro_role', JSON.stringify(role));
+      localStorage.setItem('jovro_loggedIn', 'true');
+    } catch { /* storage unavailable */ }
+    // Land on the selected role's own home so its shell opens.
     const routes: Record<UserRole, string> = {
       customer: '/', rider: '/rider', affiliate: '/affiliate', staff: '/staff', admin: '/admin',
     };
-    const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
-    window.location.href = `${base}${routes[role]}`;
+    navigate(routes[role], { replace: true });
   };
 
   return (

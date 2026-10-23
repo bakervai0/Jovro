@@ -12,7 +12,7 @@ export function StickyCartBar({ className }: { className?: string }) {
   const { pathname } = useLocation();
   const bn = state.lang === 'bn';
 
-  const hidden = ['/cart', '/checkout', '/order-success'].some(p => pathname.startsWith(p));
+  const hidden = ['/cart', '/checkout', '/order-success', '/product'].some(p => pathname.startsWith(p));
   if (cartCount === 0 || hidden) return null;
 
   return (
@@ -55,7 +55,7 @@ export function ChatFab({ withLabel }: { withLabel?: boolean }) {
   const { pathname } = useLocation();
   const bn = state.lang === 'bn';
   const { cartCount } = useApp();
-  const bottom = cartCount > 0 && !['/cart', '/checkout'].some(p => pathname.startsWith(p))
+  const bottom = cartCount > 0 && !['/cart', '/checkout', '/product', '/order-success'].some(p => pathname.startsWith(p))
     ? 'calc(10.75rem + env(safe-area-inset-bottom, 0px))'
     : 'calc(5rem + env(safe-area-inset-bottom, 0px))';
 
@@ -86,7 +86,7 @@ export function ChatFab({ withLabel }: { withLabel?: boolean }) {
 export function FloatingShoppingLayer() {
   const { pathname } = useLocation();
   const { cartCount } = useApp();
-  const hideCart = ['/cart', '/checkout', '/order-success'].some(p => pathname.startsWith(p));
+  const hideCart = ['/cart', '/checkout', '/order-success', '/product'].some(p => pathname.startsWith(p));
   return (
     <>
       {cartCount > 0 && !hideCart ? <StickyCartBar /> : null}

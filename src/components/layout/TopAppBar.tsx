@@ -27,8 +27,8 @@ export function TopAppBar({
 
   return (
     <header className={clsx(
-      'flex items-center gap-3 px-4 py-3 h-14 sticky top-0 z-30',
-      !transparent && 'bg-surface shadow-elevated-bar',
+      'flex items-center gap-3 px-4 py-2.5 h-14 sticky top-0 z-30',
+      !transparent && 'border-b border-outline-variant/50 bg-surface/95 backdrop-blur',
       className,
     )}>
       {showBack && (
