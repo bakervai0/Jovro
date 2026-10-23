@@ -5,6 +5,8 @@ import { useApp } from '../../context/AppContext';
 import type { Rider, User } from '../../types';
 import { uid } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { signUp as supabaseSignUp } from '../../lib/auth';
 
 // Bicycle ONLY (owner, Oct 23): no motorbike riders — fuel cost.
 // The form carries a single required confirmation row instead of
@@ -61,6 +63,7 @@ export default function RiderApplyScreen() {
   const [submitted, setSubmitted] = useState<Rider | null>(null);
   const [areaOpen, setAreaOpen] = useState(false);
   const [gateBlocked, setGateBlocked] = useState(false);
+  const [applyError, setApplyError] = useState(''); // backend mode only
 
   // Rider intake gate (Part B): closed when the admin switch is
   // off OR active+pending riders already fill the cap. Users who
@@ -80,12 +83,72 @@ export default function RiderApplyScreen() {
     confirm === password &&
     hasBicycle;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSubmit) return;
     // Re-check the gate at submit time — intake may have closed
     // while this form was sitting open.
     if (intakeClosed) { setGateBlocked(true); return; }
     const cleanMobile = mobile.trim();
+
+    if (isSupabaseConfigured) {
+      // Backend mode: the application belongs to a real account.
+      // A signed-in user applies with their own profile; a guest
+      // gets an account created from the form's email + password.
+      // The profile stays 'customer' until the admin approves —
+      // ADD_APPLICATION writes the applications row (AppContext
+      // sync), and approval creates the rider row + role flip.
+      setApplyError('');
+      let profileId: string | undefined =
+        state.user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(state.user.id)
+          ? state.user.id
+          : undefined;
+      if (!profileId) {
+        const res = await supabaseSignUp({
+          email: email.trim(), password,
+          name: name.trim(), nameBn: name.trim(), mobile: cleanMobile,
+        });
+        profileId = res.data?.user.id;
+        if (!profileId) {
+          setApplyError(
+            res.error?.message ??
+            (bn
+              ? 'এই ইমেইলে ইতিমধ্যে অ্যাকাউন্ট থাকতে পারে — আগে লগইন করে তারপর আবেদন করুন।'
+              : 'This email may already have an account — log in first, then apply.'),
+          );
+          return;
+        }
+      }
+      const rider: Rider = {
+        id: uid('rider-app'),
+        userId: profileId,
+        name: name.trim(),
+        nameBn: name.trim(),
+        mobile: cleanMobile,
+        email: email.trim(),
+        areaId,
+        vehicleType: 'bicycle',
+        status: 'pending',
+        totalDeliveries: 0,
+        totalEarnings: 0,
+        rating: 0,
+        joinedAt: new Date().toISOString().slice(0, 10),
+        pendingPayout: 0,
+      };
+      dispatch({ type: 'ADD_APPLICATION', rider });
+      dispatch({
+        type: 'LOG_ACTIVITY',
+        entry: {
+          id: uid('act'),
+          actorName: name.trim(),
+          action: `নতুন রাইডার আবেদন করেছেন (${cleanMobile})`,
+          at: new Date().toISOString(),
+          category: 'general',
+        },
+      });
+      setSubmitted(rider);
+      return;
+    }
+
     const rider: Rider = {
       id: uid('rider-app'),
       userId: `u-app-${cleanMobile}`,
@@ -657,6 +720,9 @@ export default function RiderApplyScreen() {
 
           {/* Submit */}
           <div className="pt-2">
+            {applyError && (
+              <p className="mb-2.5 text-body-sm text-error font-medium text-center">{applyError}</p>
+            )}
             <button
               type="submit"
               disabled={!canSubmit}
