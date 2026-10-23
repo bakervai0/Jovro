@@ -57,15 +57,25 @@ jobs:
 
       - name: Set Jovro launcher icon
         run: |
-          SRC=public/icons/icon-512.png
-          RES=android/app/src/main/res
-          rm -f $RES/mipmap-anydpi-v26/ic_launcher.xml $RES/mipmap-anydpi-v26/ic_launcher_round.xml
-          for spec in "mdpi 48" "hdpi 72" "xhdpi 96" "xxhdpi 144" "xxxhdpi 192"; do
-            set -- $spec
-            mkdir -p $RES/mipmap-$1
-            convert "$SRC" -resize ${2}x${2} $RES/mipmap-$1/ic_launcher.png
-            convert "$SRC" -resize ${2}x${2} $RES/mipmap-$1/ic_launcher_round.png
-          done
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from PIL import Image
+          import os
+          src = Image.open('public/icons/icon-512.png').convert('RGB')
+          res = 'android/app/src/main/res'
+          anydpi = os.path.join(res, 'mipmap-anydpi-v26')
+          for f in ('ic_launcher.xml', 'ic_launcher_round.xml'):
+              p = os.path.join(anydpi, f)
+              if os.path.exists(p):
+                  os.remove(p)
+          for name, size in [('mdpi', 48), ('hdpi', 72), ('xhdpi', 96), ('xxhdpi', 144), ('xxxhdpi', 192)]:
+              d = os.path.join(res, 'mipmap-' + name)
+              os.makedirs(d, exist_ok=True)
+              img = src.resize((size, size), Image.LANCZOS)
+              img.save(os.path.join(d, 'ic_launcher.png'))
+              img.save(os.path.join(d, 'ic_launcher_round.png'))
+          print('launcher icons set')
+          PY
 
       - name: Build debug APK
         working-directory: android
