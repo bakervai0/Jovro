@@ -11,6 +11,7 @@ const STATUS_CONFIG: Record<OrderStatus, { labelBn: string; labelEn: string; var
   buying: { labelBn: 'কেনাকাটা হচ্ছে', labelEn: 'Buying', variant: 'warning', icon: 'shopping_basket' },
   'on-the-way': { labelBn: 'আসছে', labelEn: 'On the way', variant: 'primary', icon: 'directions_bike' },
   delivered: { labelBn: 'ডেলিভারি হয়েছে', labelEn: 'Delivered', variant: 'success', icon: 'task_alt' },
+  failed: { labelBn: 'ডেলিভারি ব্যর্থ', labelEn: 'Delivery Failed', variant: 'error', icon: 'error' },
   cancelled: { labelBn: 'বাতিল হয়েছে', labelEn: 'Cancelled', variant: 'error', icon: 'cancel' },
   'refund-in-progress': { labelBn: 'রিফান্ড হচ্ছে', labelEn: 'Refunding', variant: 'warning', icon: 'currency_exchange' },
   refunded: { labelBn: 'রিফান্ড হয়েছে', labelEn: 'Refunded', variant: 'success', icon: 'paid' },

@@ -6,12 +6,13 @@ const ORDER_STATUSES: OrderStatus[] = [
   'pending', 'confirmed', 'buying', 'on-the-way', 'delivered',
 ];
 
-const TRACKING_MESSAGES: Record<OrderStatus, { bn: string; en: string }> = {
+export const TRACKING_MESSAGES: Record<OrderStatus, { bn: string; en: string }> = {
   pending: { bn: 'অর্ডার পাওয়া গেছে', en: 'Order received' },
   confirmed: { bn: 'অর্ডার নিশ্চিত হয়েছে', en: 'Order confirmed' },
   buying: { bn: 'পণ্য কিনছি', en: 'Buying your items' },
   'on-the-way': { bn: 'রাইডার রওনা দিয়েছে', en: 'Rider on the way' },
   delivered: { bn: 'ডেলিভারি সম্পন্ন হয়েছে', en: 'Delivered successfully' },
+  failed: { bn: 'ডেলিভারি ব্যর্থ হয়েছে', en: 'Delivery failed' },
   cancelled: { bn: 'অর্ডার বাতিল হয়েছে', en: 'Order cancelled' },
   'refund-in-progress': { bn: 'রিফান্ড প্রক্রিয়াধীন', en: 'Refund in progress' },
   refunded: { bn: 'রিফান্ড সম্পন্ন', en: 'Refunded' },

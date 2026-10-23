@@ -5,7 +5,6 @@ import { TopAppBar } from '../../components/layout/TopAppBar';
 import { IconButton } from '../../components/ui/Button';
 import { ProductCard } from '../../components/shared/ProductCard';
 import { Input } from '../../components/ui/Input';
-import { PRODUCTS } from '../../data/products';
 import type { ProductCategory } from '../../types';
 
 const CATEGORIES: { id: ProductCategory | 'all'; labelBn: string; labelEn: string; icon: string }[] = [
@@ -27,7 +26,7 @@ export default function BazaarScreen() {
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
 
   const filtered = useMemo(() => {
-    let items = PRODUCTS;
+    let items = state.products;
     if (category !== 'all') items = items.filter(p => p.category === category);
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -38,7 +37,7 @@ export default function BazaarScreen() {
       );
     }
     return items;
-  }, [query, category]);
+  }, [query, category, state.products]);
 
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden">

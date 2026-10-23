@@ -30,6 +30,7 @@ export interface DeliveryArea {
   fee: number;        // BDT
   zone: 'town' | 'union';
   group?: string;
+  isServed?: boolean; // admin can switch an area off (Phase 5 groundwork)
 }
 
 // ── Products ─────────────────────────────────────────────────
@@ -51,6 +52,8 @@ export interface Product {
   approxPrice: number; // BDT — approximate bazaar price
   isAvailable: boolean;
   imageEmoji?: string; // fallback emoji for demo
+  imageUrl?: string;
+  description?: string;
   tags?: string[];
 }
 
@@ -62,6 +65,9 @@ export interface MenuItem {
   nameEn: string;
   price: number;      // exact price
   category?: string;
+  section?: string;
+  description?: string;
+  imageEmoji?: string;
   isAvailable: boolean;
   isPopular?: boolean;
 }
@@ -79,6 +85,10 @@ export interface Restaurant {
   rating: number;
   ratingCount: number;
   imageEmoji?: string;
+  imageUrl?: string;
+  areaId?: string;
+  openingTime?: string;
+  closingTime?: string;
   menuItems: MenuItem[];
 }
 
@@ -106,6 +116,7 @@ export type OrderStatus =
   | 'buying'
   | 'on-the-way'
   | 'delivered'
+  | 'failed'
   | 'cancelled'
   | 'refund-in-progress'
   | 'refunded';
@@ -154,7 +165,13 @@ export interface Order {
   updatedAt: string;
   hasComplaint?: boolean;
   refundDays?: 3 | 5 | 7;
+  refundStatus?: 'processing' | 'paid';
+  refundAmount?: number;
+  refundMethod?: 'bkash' | 'nagad' | 'cash';
+  refundNote?: string;
   proofPhotoUrl?: string;
+  customerReceived?: boolean; // F13 — customer tapped "পণ্য পেয়েছি ✓"
+  failReason?: string;        // F12 — rider-reported failure reason
 }
 
 // ── Promo Codes ───────────────────────────────────────────────
@@ -162,12 +179,14 @@ export interface PromoCode {
   code: string;
   descriptionBn: string;
   descriptionEn: string;
-  discountType: 'flat' | 'percent';
+  discountType: 'flat' | 'percent' | 'free-delivery';
   discountValue: number;
   minOrder: number;
   maxDiscount?: number;
   isActive: boolean;
   expiresAt?: string;
+  usedCount?: number;
+  usageLimit?: number;
 }
 
 // ── Rider ─────────────────────────────────────────────────────
@@ -179,6 +198,8 @@ export interface Rider {
   name: string;
   nameBn: string;
   mobile: string;
+  email?: string;
+  areaId?: string;
   vehicleType: 'bicycle' | 'motorbike';
   status: RiderStatus;
   totalDeliveries: number;
@@ -208,12 +229,15 @@ export interface Affiliate {
   name: string;
   nameBn: string;
   mobile: string;
+  email?: string;
+  promoteNote?: string; // I1 — "কোথায় প্রচার করবেন?"
   referralCode: string;
   status: AffiliateStatus;
   totalReferrals: number;
   totalEarnings: number;
   pendingPayout: number;
   joinedAt: string;
+  commissionRate?: number; // ৳ per order — set by admin (H26)
 }
 
 // ── Staff Member ───────────────────────────────────────────────
@@ -223,6 +247,10 @@ export type StaffPermission =
   | 'riders'
   | 'customers'
   | 'reports'
+  | 'rider-assignment'
+  | 'problem-reports'
+  | 'refunds'
+  | 'riders-affiliates'
   | 'promotions'
   | 'settings';
 
@@ -321,6 +349,15 @@ export interface DeliveryPass {
   isActive: boolean;
 }
 
+// ── Team Activity Log (H24 groundwork) ─────────────────────────
+export interface ActivityLogEntry {
+  id: string;
+  actorName: string;
+  action: string;
+  at: string; // ISO timestamp
+  category?: 'order' | 'refund' | 'general';
+}
+
 // ── App State (context) ────────────────────────────────────────
 export interface AppSession {
   user: User | null;
@@ -328,4 +365,38 @@ export interface AppSession {
   lang: Lang;
   isServiceOpen: boolean;
   isSlotFull: boolean;
+}
+
+// ── Admin Settings / Marketing (Phase 5 Part 2) ─────────────
+export interface HomeBanner {
+  id: string;
+  image: string;
+  headlineBn: string;
+  headlineEn: string;
+  subBn: string;
+  subEn: string;
+  isActive: boolean;
+}
+
+export interface SubscriptionInterest {
+  id: string;
+  name: string;
+  mobile: string;
+  areaId?: string;
+  requestedAt: string;
+}
+
+export interface AdminSettings {
+  serviceHours: string;
+  deliverySlots: string[];
+  passPrice: number;
+  passDeliveries: number;
+  passActive: boolean;
+  banners: HomeBanner[];
+  flashSaleProductIds: string[];
+  flashSaleDiscount: number;
+  flashSaleStart: string;
+  flashSaleEnd: string;
+  flashSaleActive: boolean;
+  subscriptionInterests: SubscriptionInterest[];
 }

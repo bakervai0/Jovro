@@ -4,7 +4,6 @@ import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { TopAppBar } from '../../components/layout/TopAppBar';
 import { Input } from '../../components/ui/Input';
-import { RESTAURANTS } from '../../data/restaurants';
 import type { Restaurant } from '../../types';
 
 const CUISINE_FILTERS = [
@@ -86,7 +85,7 @@ export default function FoodScreen() {
   const [cuisine, setCuisine] = useState('all');
 
   const filtered = useMemo(() => {
-    let items = RESTAURANTS;
+    let items = state.restaurants;
     if (cuisine !== 'all') items = items.filter(r => r.cuisineTypeBn === cuisine);
     if (query.trim()) {
       const q = query.toLowerCase();

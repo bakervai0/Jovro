@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { DELIVERY_AREAS, searchAreas } from '../../data/areas';
+import { searchAreasIn } from '../../data/areas';
 import { TopAppBar } from '../../components/layout/TopAppBar';
 import { Input } from '../../components/ui/Input';
 import type { DeliveryArea } from '../../types';
@@ -18,10 +18,10 @@ export default function AreaPickerScreen() {
   const [zone, setZone] = useState<'all' | 'town' | 'union'>('all');
 
   const results = useMemo(() => {
-    let areas = query ? searchAreas(query) : DELIVERY_AREAS;
+    let areas = query ? searchAreasIn(state.areas, query) : state.areas;
     if (zone !== 'all') areas = areas.filter(a => a.zone === zone);
     return areas;
-  }, [query, zone]);
+  }, [query, zone, state.areas]);
 
   const selectArea = (area: DeliveryArea) => {
     dispatch({ type: 'SET_AREA', areaId: area.id });
