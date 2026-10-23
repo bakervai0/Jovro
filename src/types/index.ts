@@ -107,6 +107,7 @@ export interface CartItem {
   unit?: string;
   source: CartItemSource;
   isApproxPrice?: boolean;
+  note?: string; // per-item shopper note (Stitch 11 detail screen)
 }
 
 // ── Orders ────────────────────────────────────────────────────
