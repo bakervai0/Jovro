@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import type { PaymentRequest } from '../../types';
+import type { PaymentRequest, Rider } from '../../types';
 import {
   AdminCard, Avatar, Field, Icon, PageTitle, SectionHead, fmtDate, fmtTk, fmtTime,
   inputCls, logAction, toBnDigits, useActorName, useBn,
@@ -125,6 +125,16 @@ export function AdminRiders() {
     dispatch({ type: 'UPDATE_RIDER', rider: { ...r, status: 'inactive' } });
     logAction(dispatch, actor, `রাইডার আবেদন বাতিল করেছেন: ${riderName}`, 'general');
   };
+  const toggleSuspend = (r: Rider) => {
+    // Suspend = status 'inactive': the rider layout gate then
+    // shows the blocked screen instead of the dashboard, and the
+    // assignment pickers (active riders only) drop them at once.
+    const suspending = r.status === 'active';
+    dispatch({ type: 'UPDATE_RIDER', rider: { ...r, status: suspending ? 'inactive' : 'active' } });
+    logAction(dispatch, actor, suspending
+      ? `রাইডার স্থগিত করেছেন: ${r.nameBn}`
+      : `রাইডার আবার সক্রিয় করেছেন: ${r.nameBn}`, 'general');
+  };
   const addDirect = () => {
     if (!name.trim() || !email.trim()) return;
     dispatch({
@@ -238,6 +248,21 @@ export function AdminRiders() {
                   <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-1"><Icon name="payments" className="text-[13px]" />{bn ? 'মোট আয়' : 'Total earnings'}</p>
                   <p className="text-body-md font-bold text-on-surface">{fmtTk(r.totalEarnings, lang)}</p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-outline-variant/25">
+                <button
+                  onClick={() => toggleSuspend(r)}
+                  className={clsx('inline-flex items-center gap-1.5 text-label-md font-bold rounded-full px-3 py-1.5',
+                    r.status === 'active' ? 'bg-error/10 text-error' : 'bg-emerald-100 text-emerald-700')}
+                >
+                  <Icon name={r.status === 'active' ? 'pause_circle' : 'play_circle'} className="text-[16px]" />
+                  {r.status === 'active' ? (bn ? 'স্থগিত করুন' : 'Suspend') : (bn ? 'সক্রিয় করুন' : 'Activate')}
+                </button>
+                <span className="text-label-sm text-on-surface-variant ml-auto text-right">
+                  {r.status === 'active'
+                    ? (bn ? 'স্থগিত করলে রাইডার ড্যাশবোর্ড বন্ধ হয়ে যাবে' : 'Suspending blocks the rider dashboard')
+                    : (bn ? 'নিষ্ক্রিয় — ড্যাশবোর্ডে ঢুকতে পারছে না' : 'Inactive — cannot open the dashboard')}
+                </span>
               </div>
             </AdminCard>
           );
@@ -500,6 +525,33 @@ export function AdminPayouts() {
     logAction(dispatch, actor, `পে-আউট রিকোয়েস্ট বাতিল করেছেন: ${requester(p).name} (${fmtTk(p.amount, 'en')})`, 'general');
   };
 
+  // Monthly settlement (owner's model, Oct 23): riders no longer
+  // request payouts — at month-end the office settles each
+  // rider's FULL pending balance in cash. Recorded as a paid
+  // paymentRequest (method 'office') so it shows in the history
+  // here and in the rider's own payment history.
+  const ridersToSettle = state.riders.filter(r => r.status === 'active' && r.pendingPayout > 0);
+  const settleRider = (riderId: string) => {
+    const rider = state.riders.find(r => r.id === riderId);
+    if (!rider || rider.pendingPayout <= 0) return;
+    const now = new Date().toISOString();
+    dispatch({
+      type: 'ADD_PAYMENT_REQUEST',
+      request: {
+        id: uid('pay'),
+        riderId: rider.id,
+        amount: rider.pendingPayout,
+        status: 'paid',
+        requestedAt: now,
+        paidAt: now,
+        method: 'office',
+        accountNumber: rider.mobile,
+      },
+    });
+    dispatch({ type: 'UPDATE_RIDER', rider: { ...rider, pendingPayout: 0 } });
+    logAction(dispatch, actor, `মাসিক সেটেলমেন্ট পরিশোধ করেছেন: ${bn ? rider.nameBn : rider.name} (${fmtTk(rider.pendingPayout, 'en')})`, 'general');
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <PageTitle
@@ -527,6 +579,37 @@ export function AdminPayouts() {
           <b>{bn ? 'আগে বিকাশ/নগদে টাকা পাঠান, তারপর চিহ্নিত করুন' : 'Send the money first, then mark paid'}</b>
           <span className="block text-label-sm text-on-surface-variant">Send the money by bKash/Nagad first, then mark paid to confirm ledger.</span>
         </p>
+      </div>
+
+      {/* Monthly rider settlement — owner's model */}
+      <SectionHead icon="calendar_month" titleBn="রাইডার মাসিক সেটেলমেন্ট" titleEn="Rider Monthly Settlement" />
+      <div className="flex flex-col gap-3">
+        {ridersToSettle.map(r => (
+          <AdminCard key={r.id}>
+            <div className="flex items-center gap-3">
+              <Avatar name={bn ? r.nameBn : r.name} />
+              <div className="flex-1 min-w-0">
+                <p className="text-body-md font-bold text-on-surface">{bn ? r.nameBn : r.name}</p>
+                <p className="text-label-sm text-on-surface-variant">
+                  {bn ? 'মোট পাওনা বাকি' : 'Total pending payable'} · {toBnDigits(r.totalDeliveries, lang)}{bn ? 'টি ডেলিভারি' : ' deliveries'}
+                </p>
+              </div>
+              <span className="text-body-lg font-bold text-on-surface">{fmtTk(r.pendingPayout, lang)}</span>
+            </div>
+            <button
+              onClick={() => settleRider(r.id)}
+              className="w-full h-11 mt-3 rounded-xl bg-primary text-white text-label-md font-bold inline-flex items-center justify-center gap-1.5"
+            >
+              <Icon name="calendar_month" className="text-[17px]" />{bn ? 'মাসিক সেটেলমেন্ট / Settle month' : 'Settle month'}
+            </button>
+            <p className="text-label-sm text-on-surface-variant mt-2">
+              {bn ? 'অফিসে ক্যাশে পুরো পাওনা পরিশোধ করে এই বোতাম চাপুন — রাইডারের ব্যালেন্স শূন্য হয়ে যাবে।' : 'Pay the full balance in cash at the office, then tap — the rider balance zeroes.'}
+            </p>
+          </AdminCard>
+        ))}
+        {ridersToSettle.length === 0 && (
+          <p className="text-center text-body-md text-on-surface-variant py-4">{bn ? 'কোনো রাইডারের পাওনা বাকি নেই' : 'No rider has a pending balance'}</p>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -580,7 +663,7 @@ export function AdminPayouts() {
             <div key={p.id} className="flex items-center gap-3 py-3">
               <Icon name="check_circle" className="text-emerald-600 text-[20px]" />
               <div className="flex-1 min-w-0">
-                <p className="text-body-sm font-semibold text-on-surface">{info.name} • {p.method === 'nagad' ? 'নগদ' : 'বিকাশ'}</p>
+                <p className="text-body-sm font-semibold text-on-surface">{info.name} • {p.method === 'office' ? (bn ? 'অফিস সেটেলমেন্ট' : 'Office settlement') : p.method === 'nagad' ? 'নগদ' : 'বিকাশ'}</p>
                 <p className="text-label-sm text-on-surface-variant">{p.paidAt ? fmtDate(p.paidAt, lang) : fmtDate(p.requestedAt, lang)}</p>
               </div>
               <p className="text-body-md font-bold text-on-surface">{fmtTk(p.amount, lang)}</p>

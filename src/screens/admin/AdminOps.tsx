@@ -7,7 +7,7 @@ import {
   fmtDate, fmtTk, fmtTime, inputCls, logAction, toBnDigits, useActorName, useBn,
 } from './adminShared';
 import { areaName, dayKey, latestOrderDay, uid } from '../../services/orderUtils';
-import { DEMO_USERS, REFERRALS_SEED } from '../../data/seed';
+import { REFERRALS_SEED } from '../../data/seed';
 
 // H12 — Reviews moderation. Built from design
 // 12._reviews_moderation_jovro: totals header (মোট রিভিউ /
@@ -169,12 +169,14 @@ export function AdminNotify() {
   const [link, setLink] = useState('bazaar');
   const [sent, setSent] = useState(false);
 
-  const customerCount = useMemo(
-    () => buildCustomers(state.orders, state.problemReports).length,
+  const allCustomers = useMemo(
+    () => buildCustomers(state.orders, state.problemReports),
     [state.orders, state.problemReports],
   );
+  const customerCount = allCustomers.length;
   const riderCount = state.riders.filter(r => r.status === 'active').length;
-  const reach = audience === 'riders' ? riderCount : customerCount;
+  const areaCustomerCount = allCustomers.filter(c => c.areaId === areaId).length;
+  const reach = audience === 'riders' ? riderCount : audience === 'area' ? areaCustomerCount : customerCount;
 
   const history = state.activityLog
     .filter(e => e.action.startsWith('নোটিফিকেশন পাঠিয়েছেন:'))
@@ -190,18 +192,30 @@ export function AdminNotify() {
       : audience === 'riders'
         ? (bn ? 'শুধু রাইডারগণ' : 'Riders only')
         : areaName(state.areas, areaId, lang);
-    // The demo customer / rider inboxes receive the broadcast so
-    // it is visible after a role switch.
-    const targetUser = audience === 'riders' ? DEMO_USERS.rider : DEMO_USERS.customer;
-    dispatch({
-      type: 'ADD_NOTIFICATION',
-      notification: {
-        id: uid('notif'), userId: targetUser.id, type: 'promo',
-        titleBn: title.trim(), titleEn: titleEn.trim() || title.trim(),
-        bodyBn: message.trim(), bodyEn: message.trim(),
-        isRead: false, createdAt: new Date().toISOString(),
-      },
-    });
+    // Real targeting, matching how the inboxes filter
+    // (NotificationsScreen: userId === own id || userId === 'all'):
+    // 'all' → one broadcast row every inbox picks up; 'riders' →
+    // one row per active rider's linked user id; 'area' → one row
+    // per customer whose orders place them in the chosen area.
+    // (Previously every audience sent a single row to the demo
+    // customer / demo rider only, whatever was picked.)
+    const base = {
+      type: 'promo' as const,
+      titleBn: title.trim(), titleEn: titleEn.trim() || title.trim(),
+      bodyBn: message.trim(), bodyEn: message.trim(),
+      isRead: false, createdAt: new Date().toISOString(),
+    };
+    if (audience === 'all') {
+      dispatch({ type: 'ADD_NOTIFICATION', notification: { ...base, id: uid('notif'), userId: 'all' } });
+    } else if (audience === 'riders') {
+      state.riders
+        .filter(r => r.status === 'active' && r.userId)
+        .forEach(r => dispatch({ type: 'ADD_NOTIFICATION', notification: { ...base, id: uid('notif'), userId: r.userId! } }));
+    } else {
+      allCustomers
+        .filter(c => c.areaId === areaId)
+        .forEach(c => dispatch({ type: 'ADD_NOTIFICATION', notification: { ...base, id: uid('notif'), userId: c.id } }));
+    }
     logAction(dispatch, actor, `নোটিফিকেশন পাঠিয়েছেন: "${title.trim()}" → ${audienceLabel}`, 'general');
     setSent(true);
     setTimeout(() => setSent(false), 2500);
@@ -312,23 +326,9 @@ export function AdminNotify() {
           </AdminCard>
         ))}
         {history.length === 0 && (
-          <>
-            <AdminCard>
-              <p className="text-body-md font-semibold text-on-surface">“হাজী বিরিয়ানি আজ দুপুর থেকে অর্ডার নিচ্ছে”</p>
-              <p className="text-label-md text-on-surface-variant flex items-center gap-3 mt-1">
-                <span className="font-semibold text-emerald-700">{bn ? 'সফল' : 'Success'}</span>
-                <span className="inline-flex items-center gap-1"><Icon name="groups" className="text-[14px]" />{bn ? 'পাঠানো হয়েছে: সবাইকে' : 'Sent to: everyone'}</span>
-                <span className="inline-flex items-center gap-1"><Icon name="touch_app" className="text-[14px]" />{bn ? 'ওপেন রেট: ৪২%' : 'Open rate: 42%'}</span>
-              </p>
-            </AdminCard>
-            <AdminCard>
-              <p className="text-body-md font-semibold text-on-surface">“বৃষ্টির জন্য ডেলিভারিতে কিছুটা বিলম্ব হতে পারে”</p>
-              <p className="text-label-md text-on-surface-variant flex items-center gap-3 mt-1">
-                <span className="font-semibold text-emerald-700">{bn ? 'সম্পন্ন' : 'Done'}</span>
-                <span className="inline-flex items-center gap-1"><Icon name="location_on" className="text-[14px]" />{bn ? 'পাঠানো হয়েছে: মিশন মোড় ও কলেজ রোড' : 'Sent to: Mission Mor & College Road'}</span>
-              </p>
-            </AdminCard>
-          </>
+          <p className="text-center text-body-md text-on-surface-variant py-6">
+            {bn ? 'এখনো কোনো নোটিফিকেশন পাঠানো হয়নি — পাঠালেই এখানে ইতিহাস দেখা যাবে' : 'No notifications sent yet — sent broadcasts will appear here'}
+          </p>
         )}
       </div>
     </div>
@@ -561,6 +561,9 @@ export function AdminSettings() {
   const [hours, setHours] = useState(settings.serviceHours);
   const [newSlot, setNewSlot] = useState('');
   const [pwNote, setPwNote] = useState(false);
+  const [capDraft, setCapDraft] = useState(String(settings.riderCap ?? 5));
+  const [cutDraft, setCutDraft] = useState(String(settings.companyCutPerDelivery ?? 10));
+  const riderIntakeCount = state.riders.filter(r => r.status === 'active' || r.status === 'pending').length;
 
   const saveHours = () => {
     dispatch({ type: 'UPDATE_ADMIN_SETTINGS', settings: { ...settings, serviceHours: hours } });
@@ -605,6 +608,38 @@ export function AdminSettings() {
           <span className="inline-flex items-center gap-1"><Icon name="check_circle" className="text-primary text-[14px]" />{bn ? 'সার্ভার রেসপন্স: স্বাভাবিক (৯৫ms)' : 'Server response: normal (95ms)'}</span>
           <span>Zone: Sadar #01</span>
         </p>
+        {/* Service mode — auto (clock) / always open / always closed.
+            'auto' hands the decision back to the service-hours clock;
+            without it a manual override could never be undone. */}
+        <div>
+          <p className="text-label-md font-semibold text-on-surface-variant mb-1.5">{bn ? 'সার্ভিস মোড / Service mode' : 'Service mode / সার্ভিস মোড'}</p>
+          <div className="flex gap-2">
+            {([
+              { id: 'auto', bn: 'অটো (সময় অনুযায়ী)', en: 'Auto (by clock)' },
+              { id: 'open', bn: 'সবসময় খোলা', en: 'Always open' },
+              { id: 'closed', bn: 'সবসময় বন্ধ', en: 'Always closed' },
+            ] as const).map(m => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  dispatch({ type: 'SET_SERVICE_OVERRIDE', override: m.id });
+                  logAction(dispatch, actor, `সার্ভিস মোড বদল করেছেন: ${m.id === 'auto' ? 'অটো (সময় অনুযায়ী)' : m.id === 'open' ? 'সবসময় খোলা' : 'সবসময় বন্ধ'}`, 'general');
+                }}
+                className={clsx('flex-1 py-2 rounded-xl border-2 text-label-md font-semibold',
+                  state.serviceOverride === m.id ? 'border-primary bg-primary/8 text-primary' : 'border-outline-variant text-on-surface')}
+              >
+                {bn ? m.bn : m.en}
+              </button>
+            ))}
+          </div>
+          <p className="text-label-sm text-on-surface-variant mt-1.5">
+            {state.serviceOverride === 'auto'
+              ? (bn ? 'বর্তমানে: অটো — সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০ সময়সূচি অনুযায়ী খোলা/বন্ধ হয়' : 'Current: Auto — follows the 06:00–13:30 + 16:30–22:30 schedule')
+              : state.serviceOverride === 'open'
+                ? (bn ? 'বর্তমানে: ম্যানুয়াল ওভাররাইড — সময়সূচি যাই হোক সার্ভিস খোলা' : 'Current: manual override — service stays open regardless of the schedule')
+                : (bn ? 'বর্তমানে: ম্যানুয়াল ওভাররাইড — সময়সূচি যাই হোক সার্ভিস বন্ধ' : 'Current: manual override — service stays closed regardless of the schedule')}
+          </p>
+        </div>
         <div className="border-t border-outline-variant/25 pt-3">
           <ToggleRow
             titleBn="আজকের স্লট ফুল" titleEn="Today's slots full"
@@ -612,6 +647,78 @@ export function AdminSettings() {
             checked={state.isSlotFull}
             onChange={() => dispatch({ type: 'TOGGLE_SLOT' })}
           />
+        </div>
+      </AdminCard>
+
+      {/* Rider management — intake gate + company cut (owner, Oct 23) */}
+      <AdminCard className="flex flex-col gap-3">
+        <p className="text-label-lg font-bold text-on-surface flex items-center gap-2">
+          <Icon name="two_wheeler" className="text-primary text-[20px]" />
+          {bn ? 'রাইডার ব্যবস্থাপনা' : 'Rider Management'}
+          <span className="block text-label-sm font-normal text-on-surface-variant">Intake limit, company cut & fund</span>
+        </p>
+        <ToggleRow
+          titleBn="নতুন রাইডার নেওয়া চালু" titleEn="Rider intake open"
+          subBn="বন্ধ থাকলে আবেদন পেজে 'নেওয়া বন্ধ আছে' নোটিশ দেখাবে" subEn="When off, the apply page shows the intake-closed notice"
+          checked={settings.riderIntakeOpen}
+          onChange={v => {
+            dispatch({ type: 'UPDATE_ADMIN_SETTINGS', settings: { ...settings, riderIntakeOpen: v } });
+            logAction(dispatch, actor, `রাইডার ভর্তি ${v ? 'খুলেছেন' : 'বন্ধ করেছেন'}`, 'general');
+          }}
+        />
+        <p className="text-body-sm text-on-surface-variant flex items-center gap-1.5">
+          <Icon name="group" className="text-primary text-[16px]" />
+          {bn
+            ? <>বর্তমান রাইডার (সক্রিয় + অপেক্ষমাণ): <b className="text-on-surface">{toBnDigits(riderIntakeCount, lang)}</b> / ক্যাপ <b className="text-on-surface">{toBnDigits(settings.riderCap, lang)}</b>{riderIntakeCount >= settings.riderCap ? ' — ক্যাপ পূর্ণ, আবেদন বন্ধ আছে' : ''}</>
+            : <>Current riders (active + pending): <b className="text-on-surface">{riderIntakeCount}</b> / cap <b className="text-on-surface">{settings.riderCap}</b>{riderIntakeCount >= settings.riderCap ? ' — cap full, intake closed' : ''}</>}
+        </p>
+        <Field labelBn="রাইডার ক্যাপ (সর্বোচ্চ সংখ্যা)" labelEn="Rider cap (max riders)">
+          <div className="flex gap-2">
+            <input
+              type="number" min={1} value={capDraft}
+              onChange={e => setCapDraft(e.target.value)}
+              className={inputCls}
+            />
+            <button
+              onClick={() => {
+                const cap = Math.max(1, parseInt(capDraft, 10) || 5);
+                setCapDraft(String(cap));
+                dispatch({ type: 'UPDATE_ADMIN_SETTINGS', settings: { ...settings, riderCap: cap } });
+                logAction(dispatch, actor, `রাইডার ক্যাপ বদল করেছেন: ${cap}`, 'general');
+              }}
+              className="px-4 rounded-xl bg-primary text-white text-label-md font-bold inline-flex items-center gap-1.5 flex-shrink-0"
+            >
+              <Icon name="save" className="text-[16px]" />{bn ? 'সেভ করুন' : 'Save'}
+            </button>
+          </div>
+        </Field>
+        <div className="border-t border-outline-variant/25 pt-3 flex flex-col gap-3">
+          <Field labelBn="প্রতি ডেলিভারিতে কোম্পানি কাট (৳)" labelEn="Company cut per delivery (৳)">
+            <div className="flex gap-2">
+              <input
+                type="number" min={0} value={cutDraft}
+                onChange={e => setCutDraft(e.target.value)}
+                className={inputCls}
+              />
+              <button
+                onClick={() => {
+                  const cut = Math.max(0, parseInt(cutDraft, 10) || 0);
+                  setCutDraft(String(cut));
+                  dispatch({ type: 'UPDATE_ADMIN_SETTINGS', settings: { ...settings, companyCutPerDelivery: cut } });
+                  logAction(dispatch, actor, `কোম্পানি কাট বদল করেছেন: ৳${cut}/ডেলিভারি`, 'general');
+                }}
+                className="px-4 rounded-xl bg-primary text-white text-label-md font-bold inline-flex items-center gap-1.5 flex-shrink-0"
+              >
+                <Icon name="save" className="text-[16px]" />{bn ? 'সেভ করুন' : 'Save'}
+              </button>
+            </div>
+          </Field>
+          <p className="text-body-sm text-on-surface-variant flex items-center gap-1.5">
+            <Icon name="savings" className="text-primary text-[16px]" />
+            {bn
+              ? <>কোম্পানি ফান্ডে জমা হয়েছে: <b className="text-on-surface">{fmtTk(settings.companyFundTotal ?? 0, lang)}</b> (প্রতি ডেলিভারি থেকে কাট জমা হয়)</>
+              : <>Company fund accrued: <b className="text-on-surface">{fmtTk(settings.companyFundTotal ?? 0, lang)}</b> (accrues from every delivery's cut)</>}
+          </p>
         </div>
       </AdminCard>
 

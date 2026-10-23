@@ -59,10 +59,14 @@ export function AdminOrdersList() {
   }, [state.orders, filter, query]);
 
   const assign = (order: Order, riderId: string) => {
-    if (!riderId) return;
-    const rider = state.riders.find(r => r.id === riderId);
-    dispatch({ type: 'UPDATE_ORDER', order: { ...order, riderId, updatedAt: new Date().toISOString() } });
-    logAction(dispatch, actor, `অর্ডার #${order.id}-এ রাইডার ${rider?.nameBn ?? riderId} নিয়োগ দিলেন`, 'order');
+    // Empty selection = unassign (the list select's first option);
+    // it previously early-returned, so unassign only worked from
+    // the order detail's save button.
+    const rider = riderId ? state.riders.find(r => r.id === riderId) : undefined;
+    dispatch({ type: 'UPDATE_ORDER', order: { ...order, riderId: riderId || undefined, updatedAt: new Date().toISOString() } });
+    logAction(dispatch, actor, riderId
+      ? `অর্ডার #${order.id}-এ রাইডার ${rider?.nameBn ?? riderId} নিয়োগ দিলেন`
+      : `অর্ডার #${order.id} থেকে রাইডার সরিয়ে দিলেন`, 'order');
   };
 
   return (
