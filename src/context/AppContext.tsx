@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import type {
   User, UserRole, Lang, CartItem, Order, AppNotification,
   SavedAddress, PromoCode, Rider, Affiliate, StaffMember,
@@ -15,6 +15,14 @@ import { isWithinServiceHours } from '../services/orderUtils';
 import { PRODUCTS } from '../data/products';
 import { RESTAURANTS } from '../data/restaurants';
 import { useT } from '../i18n';
+// Backend (Phase 3) — only ever exercised when Supabase is
+// configured; in demo mode every path below is a no-op and the
+// localStorage behaviour is byte-for-byte what it always was.
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import * as be from '../lib/backend';
+import {
+  onAuthChange, profileToUser, signOut as supabaseSignOut, type Profile,
+} from '../lib/auth';
 
 // ── State Shape ────────────────────────────────────────────────
 interface AppState {
@@ -109,7 +117,9 @@ type Action =
   | { type: 'ADD_PROMO'; promo: PromoCode }
   | { type: 'UPDATE_PROMO'; promo: PromoCode }
   | { type: 'UPDATE_ADMIN_SETTINGS'; settings: AdminSettings }
-  | { type: 'HYDRATE'; state: Partial<AppState> };
+  | { type: 'HYDRATE'; state: Partial<AppState> }
+  | { type: 'MERGE_ORDERS'; orders: Order[] }
+  | { type: 'MERGE_NOTIFICATIONS'; notifications: AppNotification[] };
 
 // ── Helpers ────────────────────────────────────────────────────
 function lsGet<T>(key: string, fallback: T): T {
@@ -173,6 +183,24 @@ const INITIAL: AppState = {
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'HYDRATE': return { ...state, ...action.state };
+    case 'MERGE_ORDERS': {
+      // Realtime merge: a remote row replaces the same-id local
+      // row, brand-new remote rows go on top, and local-only
+      // rows survive (an optimistic row the server echo has not
+      // reached yet must never vanish).
+      const incoming = new Map(action.orders.map(o => [o.id, o]));
+      const known = new Set(state.orders.map(o => o.id));
+      const fresh = action.orders.filter(o => !known.has(o.id));
+      const merged = state.orders.map(o => incoming.get(o.id) ?? o);
+      return { ...state, orders: [...fresh, ...merged] };
+    }
+    case 'MERGE_NOTIFICATIONS': {
+      const incoming = new Map(action.notifications.map(n => [n.id, n]));
+      const known = new Set(state.notifications.map(n => n.id));
+      const fresh = action.notifications.filter(n => !known.has(n.id));
+      const merged = state.notifications.map(n => incoming.get(n.id) ?? n);
+      return { ...state, notifications: [...fresh, ...merged] };
+    }
     case 'SET_ROLE': {
       const user = DEMO_USERS[action.role];
       return { ...state, role: action.role, user, isLoggedIn: true };
@@ -291,6 +319,469 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
+// ── Backend sync (Phase 3 — configured mode ONLY) ─────────────
+// Every mutation is applied locally FIRST (the reducer above),
+// then written through to Supabase. A failed write is logged and
+// recorded in a non-blocking sync flag — the local update is
+// never rolled back. People-ids: in configured mode the app's
+// User.id / Rider.userId / Affiliate.userId / StaffMember.id ARE
+// profile uuids (see src/lib/backend.ts header), so FK columns
+// (orders.customer_id, payment_requests.requester_id, …) take
+// the app ids verbatim — profiles is the only lookup needed.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v: string | undefined | null): v is string => !!v && UUID_RE.test(v);
+const syncId = (prefix: string): string =>
+  `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+type SyncFail = (label: string, e: unknown) => void;
+
+async function chk<T>(label: string, p: Promise<be.BackendResult<T>>, fail: SyncFail): Promise<T | null> {
+  const r = await p;
+  if (r.error) { fail(label, r.error); return null; }
+  return r.data;
+}
+
+function userToProfile(user: User): Profile {
+  return {
+    id: user.id,
+    email: user.email ?? '',
+    role: user.role,
+    name: user.name,
+    nameBn: user.nameBn,
+    mobile: user.mobile,
+    altMobile: user.altMobile,
+    avatarUrl: user.avatarUrl,
+    deliveryAreaId: user.deliveryAreaId,
+    isVerified: user.isVerified,
+    status: 'active',
+    referralCode: user.referralCode,
+    referredBy: user.referredBy,
+    hasActivePass: user.hasActivePass ?? false,
+    createdAt: user.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function writeSettingsRow(
+  settings: AdminSettings,
+  override: 'auto' | 'open' | 'closed',
+  fail: SyncFail,
+): Promise<void> {
+  // admin_settings.settings is jsonb: the tri-state override
+  // rides along as an extra key so it round-trips with the rest
+  // of AdminSettings (extracted again at hydration).
+  const merged = { ...settings, serviceOverride: override } as AdminSettings;
+  await chk('সেটিংস সেভ', be.updateAdminSettings(merged), fail);
+}
+
+async function syncActionToBackend(
+  action: Action,
+  state: AppState,
+  pendingApps: Map<string, be.ApplicationRecord>,
+  fail: SyncFail,
+): Promise<void> {
+  switch (action.type) {
+    // ── Orders ──────────────────────────────────────────────
+    case 'PLACE_ORDER':
+      await chk('অর্ডার সেভ', be.placeOrder(action.order), fail);
+      return;
+    case 'UPDATE_ORDER':
+      await chk('অর্ডার আপডেট', be.updateOrder(action.order), fail);
+      return;
+
+    // ── Catalogue ───────────────────────────────────────────
+    case 'ADD_PRODUCT':
+      await chk('পণ্য যোগ', be.addProduct(action.product), fail);
+      return;
+    case 'UPDATE_PRODUCT':
+      await chk('পণ্য আপডেট', be.updateProduct(action.product), fail);
+      return;
+    case 'DELETE_PRODUCT':
+      await chk('পণ্য মোছা', be.deleteProduct(action.id), fail);
+      return;
+    case 'ADD_RESTAURANT':
+      await chk('রেস্টুরেন্ট যোগ', be.addRestaurant(action.restaurant), fail);
+      return;
+    case 'UPDATE_RESTAURANT':
+      await chk('রেস্টুরেন্ট আপডেট', be.updateRestaurant(action.restaurant), fail);
+      return;
+    case 'DELETE_RESTAURANT':
+      await chk('রেস্টুরেন্ট মোছা', be.deleteRestaurant(action.id), fail);
+      return;
+    case 'ADD_PROMO':
+      await chk('প্রোমো যোগ', be.addPromo(action.promo), fail);
+      return;
+    case 'UPDATE_PROMO':
+      await chk('প্রোমো আপডেট', be.updatePromo(action.promo), fail);
+      return;
+    case 'UPDATE_AREA':
+      await chk('এলাকা আপডেট', be.updateArea(action.area), fail);
+      return;
+
+    // ── Support / reviews / payouts ─────────────────────────
+    case 'ADD_PROBLEM_REPORT':
+      await chk('রিপোর্ট সেভ', be.addProblemReport(action.report), fail);
+      return;
+    case 'UPDATE_PROBLEM_REPORT':
+      await chk('রিপোর্ট আপডেট', be.updateProblemReport(action.report), fail);
+      return;
+    case 'ADD_REVIEW':
+      await chk('রিভিউ সেভ', be.addReview(action.review), fail);
+      return;
+    case 'UPDATE_REVIEW':
+      await chk('রিভিউ আপডেট', be.updateReview(action.review), fail);
+      return;
+    case 'ADD_PAYMENT_REQUEST':
+    case 'UPDATE_PAYMENT_REQUEST': {
+      const req = action.request;
+      const requesterType: 'rider' | 'affiliate' =
+        state.affiliates.some(a => a.id === req.riderId || a.userId === req.riderId)
+          ? 'affiliate'
+          : 'rider';
+      const payload: be.BackendPaymentRequest = { ...req, requesterType };
+      if (action.type === 'ADD_PAYMENT_REQUEST') {
+        await chk('পেমেন্ট রিকোয়েস্ট', be.addPaymentRequest(payload), fail);
+      } else {
+        await chk('পেমেন্ট রিকোয়েস্ট আপডেট', be.updatePaymentRequest(payload), fail);
+      }
+      return;
+    }
+
+    // ── Notifications ───────────────────────────────────────
+    case 'ADD_NOTIFICATION': {
+      const n = action.notification;
+      if (n.userId === 'all') {
+        // notifications.user_id is a profile FK — a literal
+        // 'all' row cannot exist in the DB. Broadcasts fan out
+        // to one row per profile instead (admin/staff senders
+        // may read profiles; anyone else's attempt is logged).
+        const profiles = await chk('ব্রডকাস্ট', be.fetchProfiles(), fail);
+        if (profiles) {
+          for (const p of profiles) {
+            await chk('ব্রডকাস্ট', be.addNotification({ ...n, id: syncId('notif'), userId: p.id }), fail);
+          }
+        }
+        return;
+      }
+      if (isUuid(n.userId)) await chk('নোটিফিকেশন', be.addNotification(n), fail);
+      return;
+    }
+    case 'MARK_NOTIFICATION_READ':
+      await chk('নোটিফিকেশন', be.markNotificationRead(action.id), fail);
+      return;
+    case 'MARK_ALL_READ':
+      if (isUuid(state.user?.id)) {
+        await chk('নোটিফিকেশন', be.markAllNotificationsRead(state.user.id), fail);
+      }
+      return;
+
+    // ── Addresses ───────────────────────────────────────────
+    case 'ADD_ADDRESS':
+      await chk('ঠিকানা সেভ', be.addAddress(action.address), fail);
+      return;
+    case 'UPDATE_ADDRESS':
+      await chk('ঠিকানা আপডেট', be.updateAddress(action.address), fail);
+      return;
+    case 'DELETE_ADDRESS':
+      await chk('ঠিকানা মোছা', be.deleteAddress(action.id), fail);
+      return;
+
+    // ── Waitlist ────────────────────────────────────────────
+    case 'ADD_AFFILIATE_WAITLIST':
+      await chk('অপেক্ষা তালিকা', be.addAffiliateWaitlistEmail(action.email), fail);
+      return;
+
+    // ── Settings ────────────────────────────────────────────
+    case 'UPDATE_ADMIN_SETTINGS':
+      await writeSettingsRow(action.settings, state.serviceOverride, fail);
+      return;
+    case 'SET_SERVICE_OVERRIDE':
+      await writeSettingsRow(state.adminSettings, action.override, fail);
+      return;
+    case 'TOGGLE_SERVICE': {
+      const next = state.isServiceOpen ? 'closed' as const : 'open' as const;
+      await writeSettingsRow(state.adminSettings, next, fail);
+      return;
+    }
+
+    // ── Profile ─────────────────────────────────────────────
+    case 'UPDATE_PROFILE':
+      if (isUuid(action.user.id)) {
+        await chk('প্রোফাইল আপডেট', be.updateProfile(userToProfile(action.user)), fail);
+      }
+      return;
+
+    // ── Activity log (best-effort: RLS only lets admin/staff
+    //    insert, so customer-side entries are console-only) ───
+    case 'LOG_ACTIVITY': {
+      const r = await be.logActivity(
+        action.entry,
+        isUuid(state.user?.id) ? state.user.id : undefined,
+      );
+      if (r.error) console.debug('[Jovro backend sync] activity log skipped:', r.error.message);
+      return;
+    }
+
+    // ── Applications ────────────────────────────────────────
+    case 'ADD_APPLICATION': {
+      const myId = isUuid(state.user?.id) ? state.user.id : undefined;
+      if (action.rider) {
+        const r = action.rider;
+        await chk('রাইডার আবেদন', be.addApplication({
+          id: syncId('app'),
+          type: 'rider',
+          profileId: isUuid(r.userId) ? r.userId : myId,
+          name: r.name, nameBn: r.nameBn, mobile: r.mobile, email: r.email,
+          areaId: r.areaId, vehicleType: r.vehicleType,
+          payload: {}, status: 'pending', createdAt: new Date().toISOString(),
+        }), fail);
+      }
+      if (action.affiliate) {
+        const a = action.affiliate;
+        await chk('অ্যাফিলিয়েট আবেদন', be.addApplication({
+          id: syncId('app'),
+          type: 'affiliate',
+          profileId: isUuid(a.userId) ? a.userId : myId,
+          name: a.name, nameBn: a.nameBn, mobile: a.mobile, email: a.email,
+          promoteNote: a.promoteNote,
+          payload: {}, status: 'pending', createdAt: new Date().toISOString(),
+        }), fail);
+      }
+      return;
+    }
+
+    // ── Riders ──────────────────────────────────────────────
+    case 'ADD_RIDER': {
+      // Direct add: the person must already have signed up —
+      // their profile (found by email) gains the rider row +
+      // the rider role.
+      const email = action.rider.email?.trim();
+      if (!email) { fail('রাইডার যোগ', new Error('ইমেইল ছাড়া backend-এ রাইডার যোগ করা যায় না')); return; }
+      const found = await be.fetchProfileByEmail(email);
+      if (!found.data) {
+        fail('রাইডার যোগ', new Error(`${email} দিয়ে কোনো অ্যাকাউন্ট নেই — তাকে আগে অ্যাপে সাইন আপ করতে বলুন`));
+        return;
+      }
+      await chk('রাইডার তৈরি', be.addRider({ ...action.rider, id: found.data.id, userId: found.data.id, status: 'active' }), fail);
+      await chk('রোল বদল', be.updateProfile({ ...found.data, role: 'rider' }), fail);
+      return;
+    }
+    case 'UPDATE_RIDER': {
+      const app = pendingApps.get(action.rider.id);
+      if (app) {
+        // This "rider" is a pending APPLICATION — approving it
+        // creates the real rider row and flips the profile role;
+        // rejecting just closes the application.
+        if (action.rider.status === 'active') {
+          if (!isUuid(app.profileId)) {
+            fail('রাইডার অনুমোদন', new Error('আবেদনকারীর অ্যাকাউন্ট (profile) পাওয়া যায়নি'));
+            return;
+          }
+          await chk('আবেদন আপডেট', be.updateApplicationStatus(app.id, 'approved'), fail);
+          await chk('রাইডার তৈরি', be.addRider({ ...action.rider, id: app.profileId, userId: app.profileId, status: 'active' }), fail);
+          const prof = await chk('প্রোফাইল খোঁজা', be.fetchProfileById(app.profileId), fail);
+          if (prof) await chk('রোল বদল', be.updateProfile({ ...prof, role: 'rider' }), fail);
+          pendingApps.delete(app.id);
+        } else if (action.rider.status === 'inactive') {
+          await chk('আবেদন আপডেট', be.updateApplicationStatus(app.id, 'rejected'), fail);
+          pendingApps.delete(app.id);
+        }
+        return;
+      }
+      if (isUuid(action.rider.userId)) {
+        await chk('রাইডার আপডেট', be.updateRider(action.rider), fail);
+      }
+      return;
+    }
+
+    // ── Affiliates ──────────────────────────────────────────
+    case 'ADD_AFFILIATE': {
+      const email = action.affiliate.email?.trim();
+      if (!email) { fail('অ্যাফিলিয়েট যোগ', new Error('ইমেইল ছাড়া backend-এ অ্যাফিলিয়েট যোগ করা যায় না')); return; }
+      const found = await be.fetchProfileByEmail(email);
+      if (!found.data) {
+        fail('অ্যাফিলিয়েট যোগ', new Error(`${email} দিয়ে কোনো অ্যাকাউন্ট নেই — তাকে আগে অ্যাপে সাইন আপ করতে বলুন`));
+        return;
+      }
+      await chk('অ্যাফিলিয়েট তৈরি', be.addAffiliate({
+        ...action.affiliate, id: found.data.id, userId: found.data.id, status: 'active',
+        referralCode: action.affiliate.referralCode || (found.data.referralCode ?? ''),
+      }), fail);
+      await chk('রোল বদল', be.updateProfile({ ...found.data, role: 'affiliate' }), fail);
+      return;
+    }
+    case 'UPDATE_AFFILIATE': {
+      const app = pendingApps.get(action.affiliate.id);
+      if (app) {
+        if (action.affiliate.status === 'active') {
+          if (!isUuid(app.profileId)) {
+            fail('অ্যাফিলিয়েট অনুমোদন', new Error('আবেদনকারীর অ্যাকাউন্ট (profile) পাওয়া যায়নি'));
+            return;
+          }
+          await chk('আবেদন আপডেট', be.updateApplicationStatus(app.id, 'approved'), fail);
+          const prof = await chk('প্রোফাইল খোঁজা', be.fetchProfileById(app.profileId), fail);
+          await chk('অ্যাফিলিয়েট তৈরি', be.addAffiliate({
+            ...action.affiliate, id: app.profileId, userId: app.profileId, status: 'active',
+            referralCode: action.affiliate.referralCode || (prof?.referralCode ?? ''),
+          }), fail);
+          if (prof) await chk('রোল বদল', be.updateProfile({ ...prof, role: 'affiliate' }), fail);
+          pendingApps.delete(app.id);
+        } else if (action.affiliate.status === 'inactive') {
+          await chk('আবেদন আপডেট', be.updateApplicationStatus(app.id, 'rejected'), fail);
+          pendingApps.delete(app.id);
+        }
+        return;
+      }
+      if (isUuid(action.affiliate.userId)) {
+        await chk('অ্যাফিলিয়েট আপডেট', be.updateAffiliate(action.affiliate), fail);
+      }
+      return;
+    }
+
+    // ── Staff ───────────────────────────────────────────────
+    case 'ADD_STAFF': {
+      const email = action.member.email?.trim();
+      if (!email) { fail('স্টাফ যোগ', new Error('ইমেইল ছাড়া backend-এ স্টাফ যোগ করা যায় না')); return; }
+      const found = await be.fetchProfileByEmail(email);
+      if (!found.data) {
+        fail('স্টাফ যোগ', new Error(`${email} দিয়ে কোনো অ্যাকাউন্ট নেই — তাকে আগে অ্যাপে সাইন আপ করতে বলুন`));
+        return;
+      }
+      await chk('স্টাফ তৈরি', be.addStaff({ ...action.member, id: found.data.id }), fail);
+      await chk('রোল বদল', be.updateProfile({ ...found.data, role: 'staff' }), fail);
+      return;
+    }
+    case 'UPDATE_STAFF': {
+      if (isUuid(action.member.id)) {
+        await chk('স্টাফ আপডেট', be.updateStaff(action.member), fail);
+        return;
+      }
+      const email = action.member.email?.trim();
+      if (email) {
+        const found = await be.fetchProfileByEmail(email);
+        if (found.data) {
+          await chk('স্টাফ আপডেট', be.updateStaff({ ...action.member, id: found.data.id }), fail);
+        }
+      }
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+/**
+ * Hydrate the shared collections from Supabase (configured mode
+ * only), replacing the seed slices. Any slice whose fetch fails
+ * keeps its current local value — a flaky connection must never
+ * blank the app. Pending applications are folded into the
+ * riders/affiliates lists as pending records (id = application
+ * id) so the existing admin approval UI works unchanged; the
+ * sync layer recognises those ids via `pendingApps`.
+ */
+async function hydrateFromBackend(
+  rawDispatch: React.Dispatch<Action>,
+  pendingApps: Map<string, be.ApplicationRecord>,
+  fail: SyncFail,
+): Promise<void> {
+  const db = supabase;
+  if (!db) return;
+  const take = <T,>(label: string, r: be.BackendResult<T>): T | null => {
+    if (r.error) { fail(`ডেটা লোড (${label})`, r.error); return null; }
+    return r.data;
+  };
+
+  const [
+    areasR, productsR, restaurantsR, promosR, settingsR, ordersR,
+    ridersR, affiliatesR, staffR, reportsR, reviewsR, paymentsR,
+    activityR, waitlistR, applicationsR,
+  ] = await Promise.all([
+    be.fetchAreas(), be.fetchProducts(), be.fetchRestaurants(), be.fetchPromos(),
+    be.fetchAdminSettings(), be.fetchOrders(), be.fetchRiders(), be.fetchAffiliates(),
+    be.fetchStaff(), be.fetchProblemReports(), be.fetchReviews(), be.fetchPaymentRequests(),
+    be.fetchActivityLog(), be.fetchAffiliateWaitlist(), be.fetchApplications('pending'),
+  ]);
+
+  const partial: Partial<AppState> = {};
+  const areas = take('এলাকা', areasR); if (areas) partial.areas = areas;
+  const products = take('পণ্য', productsR); if (products) partial.products = products;
+  const restaurants = take('রেস্টুরেন্ট', restaurantsR); if (restaurants) partial.restaurants = restaurants;
+  const promos = take('প্রোমো', promosR); if (promos) partial.promos = promos;
+  const orders = take('অর্ডার', ordersR); if (orders) partial.orders = orders;
+  const reports = take('রিপোর্ট', reportsR); if (reports) partial.problemReports = reports;
+  const reviews = take('রিভিউ', reviewsR); if (reviews) partial.reviews = reviews;
+  const payments = take('পেমেন্ট রিকোয়েস্ট', paymentsR); if (payments) partial.paymentRequests = payments;
+  const staff = take('স্টাফ', staffR); if (staff) partial.staff = staff;
+  const activity = take('অ্যাক্টিভিটি লগ', activityR); if (activity) partial.activityLog = activity;
+  const waitlist = take('অপেক্ষা তালিকা', waitlistR); if (waitlist) partial.affiliateWaitlist = waitlist;
+  const riders = take('রাইডার', ridersR); if (riders) partial.riders = riders;
+  const affiliates = take('অ্যাফিলিয়েট', affiliatesR); if (affiliates) partial.affiliates = affiliates;
+
+  const settings = take('সেটিংস', settingsR);
+  if (settings) {
+    partial.adminSettings = { ...DEFAULT_ADMIN_SETTINGS, ...settings };
+    const ov = (settings as AdminSettings & { serviceOverride?: 'auto' | 'open' | 'closed' }).serviceOverride;
+    if (ov === 'auto' || ov === 'open' || ov === 'closed') {
+      partial.serviceOverride = ov;
+      partial.isServiceOpen = ov === 'auto' ? isWithinServiceHours() : ov === 'open';
+    }
+  }
+
+  const applications = take('আবেদন', applicationsR);
+  if (applications) {
+    pendingApps.clear();
+    for (const app of applications) pendingApps.set(app.id, app);
+    if (partial.riders) {
+      const extras: Rider[] = [];
+      for (const app of applications) {
+        if (app.type !== 'rider' || partial.riders.some(r => r.id === app.id)) continue;
+        extras.push({
+          id: app.id, userId: app.profileId ?? `app:${app.id}`,
+          name: app.name, nameBn: app.nameBn, mobile: app.mobile, email: app.email,
+          areaId: app.areaId, vehicleType: app.vehicleType ?? 'bicycle',
+          status: 'pending', totalDeliveries: 0, totalEarnings: 0, rating: 0,
+          joinedAt: app.createdAt.slice(0, 10), pendingPayout: 0,
+        });
+      }
+      if (extras.length) partial.riders = [...extras, ...partial.riders];
+    }
+    if (partial.affiliates) {
+      const extras: Affiliate[] = [];
+      for (const app of applications) {
+        if (app.type !== 'affiliate' || partial.affiliates.some(a => a.id === app.id)) continue;
+        let code = '';
+        if (isUuid(app.profileId)) {
+          const prof = await be.fetchProfileById(app.profileId);
+          code = prof.data?.referralCode ?? '';
+        }
+        extras.push({
+          id: app.id, userId: app.profileId ?? `app:${app.id}`,
+          name: app.name, nameBn: app.nameBn, mobile: app.mobile, email: app.email,
+          promoteNote: app.promoteNote, referralCode: code,
+          status: 'pending', totalReferrals: 0, totalEarnings: 0, pendingPayout: 0,
+          joinedAt: app.createdAt.slice(0, 10),
+        });
+      }
+      if (extras.length) partial.affiliates = [...extras, ...partial.affiliates];
+    }
+  }
+
+  // Session-scoped slices: my notifications + my saved addresses.
+  const { data: authData } = await db.auth.getUser();
+  const uid = authData.user?.id;
+  if (uid) {
+    const [notifR, addrR] = await Promise.all([
+      be.fetchNotificationsForUser(uid), be.fetchAddressesForUser(uid),
+    ]);
+    const notifs = take('নোটিফিকেশন', notifR); if (notifs) partial.notifications = notifs;
+    const addrs = take('ঠিকানা', addrR); if (addrs) partial.addresses = addrs;
+  }
+
+  rawDispatch({ type: 'HYDRATE', state: partial });
+}
+
 // ── Context ────────────────────────────────────────────────────
 interface AppContextType {
   state: AppState;
@@ -311,6 +802,11 @@ interface AppContextType {
   // Helpers
   validatePromo: (code: string) => PromoCode | null;
   t: (key: string) => string;
+  /** True when Supabase keys exist (backend mode). */
+  isBackendMode: boolean;
+  /** Last backend write-through failure (non-blocking; the
+   *  local update always stands). Null in demo mode. */
+  backendSyncError: string | null;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -321,19 +817,52 @@ function dayjsExpired(iso: string): boolean {
 
 // ── Provider ───────────────────────────────────────────────────
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, INITIAL);
+  const [state, rawDispatch] = useReducer(reducer, INITIAL);
+  const [backendSyncError, setBackendSyncError] = useState<string | null>(null);
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+  const pendingAppsRef = useRef(new Map<string, be.ApplicationRecord>());
+
+  const reportSyncError = useCallback<SyncFail>((label, e) => {
+    const msg = e instanceof Error
+      ? e.message
+      : ((e as { message?: string } | null)?.message ?? String(e));
+    console.error(`[Jovro backend sync] ${label} failed:`, e);
+    setBackendSyncError(`${label}: ${msg}`);
+  }, []);
+
+  // The one dispatch the whole app uses: reducer first
+  // (optimistic local update), then — configured mode only —
+  // the write-through to Supabase.
+  const dispatch = useCallback((action: Action) => {
+    rawDispatch(action);
+    if (!isSupabaseConfigured) return;
+    if (action.type === 'LOGOUT') { void supabaseSignOut(); return; }
+    void syncActionToBackend(action, stateRef.current, pendingAppsRef.current, reportSyncError);
+  }, [reportSyncError]);
 
   // Hydrate from localStorage
   useEffect(() => {
-    const saved = lsGet<Partial<PersistedData> | null>(DATA_KEY, null);
-    const hydrated: Partial<AppState> = {
+    const deviceLocal: Partial<AppState> = {
       lang: lsGet<Lang>('jovro_lang', 'bn'),
-      role: lsGet<UserRole>('jovro_role', 'customer'),
-      isLoggedIn: lsGet<boolean>('jovro_loggedIn', false),
-      user: lsGet<User | null>('jovro_user', null),
       cart: lsGet<CartItem[]>('jovro_cart', []),
       favouriteProductIds: lsGet<string[]>('jovro_favs', []),
       selectedAreaId: lsGet<string>('jovro_area', 'area-01'),
+    };
+    if (isSupabaseConfigured) {
+      // Backend mode: the session + shared collections come
+      // from Supabase (auth subscription + backend hydration
+      // below) — restoring demo slices or a stored demo user
+      // here would resurrect stale local state.
+      rawDispatch({ type: 'HYDRATE', state: deviceLocal });
+      return;
+    }
+    const saved = lsGet<Partial<PersistedData> | null>(DATA_KEY, null);
+    const hydrated: Partial<AppState> = {
+      ...deviceLocal,
+      role: lsGet<UserRole>('jovro_role', 'customer'),
+      isLoggedIn: lsGet<boolean>('jovro_loggedIn', false),
+      user: lsGet<User | null>('jovro_user', null),
     };
     if (saved) {
       if (saved.orders) hydrated.orders = saved.orders;
@@ -405,6 +934,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, []);
 
+  // ── Backend mode (Phase 3) ────────────────────────────────
+  // Initial hydration from Supabase (public catalogue is
+  // readable signed-out; the rest is RLS-scoped to the session).
+  const hydrateBackend = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    await hydrateFromBackend(rawDispatch, pendingAppsRef.current, reportSyncError);
+  }, [reportSyncError]);
+
+  useEffect(() => { void hydrateBackend(); }, [hydrateBackend]);
+
+  // Session changes: the profile decides the session user +
+  // role; signing in re-hydrates (RLS visibility changes with
+  // the role), signing out drops back to the guest state.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    return onAuthChange(({ event, session, profile }) => {
+      if (session && profile) {
+        rawDispatch({ type: 'LOGIN', user: profileToUser(profile) });
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          void hydrateBackend();
+        }
+      } else if (!session) {
+        rawDispatch({ type: 'LOGOUT' });
+      }
+    });
+  }, [hydrateBackend]);
+
+  // Realtime: merge other people's order / notification
+  // changes into local state while signed in.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !state.isLoggedIn) return;
+    const unsubOrders = be.subscribeToOrders(order =>
+      rawDispatch({ type: 'MERGE_ORDERS', orders: [order] }));
+    const unsubNotifs = be.subscribeToNotifications(n =>
+      rawDispatch({ type: 'MERGE_NOTIFICATIONS', notifications: [n] }));
+    return () => { unsubOrders(); unsubNotifs(); };
+  }, [state.isLoggedIn]);
+
   // Computed values
   const currentArea = state.areas.find(a => a.id === state.selectedAreaId);
   const cartDeliveryFeeRaw = currentArea?.fee ?? 20;
@@ -451,7 +1018,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     state, dispatch,
     cartTotal, cartCount, cartDeliveryFee, cartDeliveryFeeRaw, cartFeeWaiver, cartDiscount, cartFinal,
     unreadCount, currentArea, validatePromo, t,
-  }), [state, cartTotal, cartCount, cartDeliveryFee, cartDeliveryFeeRaw, cartFeeWaiver, cartDiscount, cartFinal, unreadCount, currentArea, validatePromo, t]);
+    isBackendMode: isSupabaseConfigured,
+    backendSyncError,
+  }), [state, dispatch, cartTotal, cartCount, cartDeliveryFee, cartDeliveryFeeRaw, cartFeeWaiver, cartDiscount, cartFinal, unreadCount, currentArea, validatePromo, t, backendSyncError]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
