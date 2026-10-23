@@ -3,7 +3,7 @@ import type {
   User, UserRole, Lang, CartItem, Order, AppNotification,
   SavedAddress, PromoCode, Rider, Affiliate, StaffMember,
   ProblemReport, Review, PaymentRequest, Product, DeliveryArea,
-  ActivityLogEntry, Restaurant, AdminSettings
+  ActivityLogEntry, Restaurant, AdminSettings, AffiliateWaitlistEntry
 } from '../types';
 import {
   DEMO_USERS, SAMPLE_ORDERS, SAMPLE_NOTIFICATIONS, SAMPLE_ADDRESSES, PROMO_CODES,
@@ -11,6 +11,7 @@ import {
   SAMPLE_REVIEWS, SAMPLE_PAYMENT_REQUESTS, ACTIVITY_LOG_SEED, DEFAULT_ADMIN_SETTINGS
 } from '../data/seed';
 import { DELIVERY_AREAS } from '../data/areas';
+import { isWithinServiceHours } from '../services/orderUtils';
 import { PRODUCTS } from '../data/products';
 import { RESTAURANTS } from '../data/restaurants';
 import { useT } from '../i18n';
@@ -23,6 +24,10 @@ interface AppState {
   lang: Lang;
   isLoggedIn: boolean;
   isServiceOpen: boolean;
+  /** Admin master-switch override: 'auto' follows the Dhaka
+   * service windows (06:00–13:30 + 16:30–22:30); 'open'/'closed'
+   * are manual overrides set from the admin TOGGLE_SERVICE switch. */
+  serviceOverride: 'auto' | 'open' | 'closed';
   isSlotFull: boolean;
   // Cart
   cart: CartItem[];
@@ -35,6 +40,7 @@ interface AppState {
   // operator / affiliate sections now, admin section in Part 2)
   riders: Rider[];
   affiliates: Affiliate[];
+  affiliateWaitlist: AffiliateWaitlistEntry[];
   staff: StaffMember[];
   problemReports: ProblemReport[];
   reviews: Review[];
@@ -72,6 +78,7 @@ type Action =
   | { type: 'DELETE_ADDRESS'; id: string }
   | { type: 'TOGGLE_FAVOURITE'; productId: string }
   | { type: 'TOGGLE_SERVICE' }
+  | { type: 'SERVICE_TICK' }
   | { type: 'TOGGLE_SLOT' }
   | { type: 'UPDATE_PROFILE'; user: User }
   // Phase 5 shared collections
@@ -79,6 +86,7 @@ type Action =
   | { type: 'UPDATE_RIDER'; rider: Rider }
   | { type: 'ADD_AFFILIATE'; affiliate: Affiliate }
   | { type: 'UPDATE_AFFILIATE'; affiliate: Affiliate }
+  | { type: 'ADD_AFFILIATE_WAITLIST'; email: string }
   | { type: 'ADD_STAFF'; member: StaffMember }
   | { type: 'UPDATE_STAFF'; member: StaffMember }
   | { type: 'ADD_PROBLEM_REPORT'; report: ProblemReport }
@@ -119,6 +127,7 @@ interface PersistedData {
   orders: Order[];
   riders: Rider[];
   affiliates: Affiliate[];
+  affiliateWaitlist: AffiliateWaitlistEntry[];
   staff: StaffMember[];
   problemReports: ProblemReport[];
   reviews: Review[];
@@ -130,17 +139,21 @@ interface PersistedData {
   promos: PromoCode[];
   adminSettings: AdminSettings;
   notifications: AppNotification[];
+  addresses: SavedAddress[];
+  appliedPromo: PromoCode | null;
+  serviceOverride: 'auto' | 'open' | 'closed';
 }
 
 const INITIAL: AppState = {
   user: null, role: 'customer', lang: 'bn', isLoggedIn: false,
-  isServiceOpen: true, isSlotFull: false,
+  isServiceOpen: isWithinServiceHours(), serviceOverride: 'auto', isSlotFull: false,
   cart: [], orders: SAMPLE_ORDERS,
   notifications: SAMPLE_NOTIFICATIONS,
   addresses: SAMPLE_ADDRESSES,
   favouriteProductIds: [],
   riders: SAMPLE_RIDERS,
   affiliates: SAMPLE_AFFILIATES,
+  affiliateWaitlist: [],
   staff: SAMPLE_STAFF,
   problemReports: SAMPLE_PROBLEM_REPORTS,
   reviews: SAMPLE_REVIEWS,
@@ -170,11 +183,26 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_AREA': return { ...state, selectedAreaId: action.areaId };
 
     case 'ADD_TO_CART': {
-      const existing = state.cart.find(i => i.id === action.item.id);
-      if (existing) {
-        return { ...state, cart: state.cart.map(i => i.id === action.item.id ? { ...i, quantity: i.quantity + 1 } : i) };
+      // Lines are keyed by id + unit price: the same product at a
+      // different price (flash sale vs regular, pack variants)
+      // must never merge into one mis-priced line. Merging adds
+      // the incoming quantity (reorder passes original qtys).
+      const item = action.item;
+      const qty = Math.max(1, item.quantity || 1);
+      const bump = (line: CartItem) => ({ ...line, quantity: line.quantity + qty, note: item.note ?? line.note });
+      const exact = state.cart.find(i => i.id === item.id && i.price === item.price);
+      if (exact) {
+        return { ...state, cart: state.cart.map(i => (i === exact ? bump(i) : i)) };
       }
-      return { ...state, cart: [...state.cart, action.item] };
+      if (state.cart.some(i => i.id === item.id)) {
+        const derivedId = `${item.id}::${item.price}`;
+        const derived = state.cart.find(i => i.id === derivedId);
+        if (derived) {
+          return { ...state, cart: state.cart.map(i => (i === derived ? bump(i) : i)) };
+        }
+        return { ...state, cart: [...state.cart, { ...item, id: derivedId, quantity: qty }] };
+      }
+      return { ...state, cart: [...state.cart, { ...item, quantity: qty }] };
     }
     case 'REMOVE_FROM_CART': return { ...state, cart: state.cart.filter(i => i.id !== action.id) };
     case 'UPDATE_CART_QTY': {
@@ -189,7 +217,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'UPDATE_ORDER': return { ...state, orders: state.orders.map(o => o.id === action.order.id ? action.order : o) };
 
     case 'MARK_NOTIFICATION_READ': return { ...state, notifications: state.notifications.map(n => n.id === action.id ? { ...n, isRead: true } : n) };
-    case 'MARK_ALL_READ': return { ...state, notifications: state.notifications.map(n => ({ ...n, isRead: true })) };
+    case 'MARK_ALL_READ': return { ...state, notifications: state.notifications.map(n => (!state.user || n.userId === state.user.id || n.userId === 'all') ? { ...n, isRead: true } : n) };
 
     case 'ADD_ADDRESS': return { ...state, addresses: [...state.addresses, action.address] };
     case 'UPDATE_ADDRESS': return { ...state, addresses: state.addresses.map(a => a.id === action.address.id ? action.address : a) };
@@ -199,7 +227,16 @@ function reducer(state: AppState, action: Action): AppState {
       const favs = state.favouriteProductIds;
       return { ...state, favouriteProductIds: favs.includes(action.productId) ? favs.filter(id => id !== action.productId) : [...favs, action.productId] };
     }
-    case 'TOGGLE_SERVICE': return { ...state, isServiceOpen: !state.isServiceOpen };
+    case 'TOGGLE_SERVICE': {
+      // Master switch = manual override of the time-based state.
+      const override = state.isServiceOpen ? 'closed' as const : 'open' as const;
+      return { ...state, serviceOverride: override, isServiceOpen: override === 'open' };
+    }
+    case 'SERVICE_TICK': {
+      if (state.serviceOverride !== 'auto') return state;
+      const open = isWithinServiceHours();
+      return open === state.isServiceOpen ? state : { ...state, isServiceOpen: open };
+    }
     case 'TOGGLE_SLOT': return { ...state, isSlotFull: !state.isSlotFull };
 
     // Phase 5 shared collections
@@ -207,6 +244,11 @@ function reducer(state: AppState, action: Action): AppState {
     case 'UPDATE_RIDER': return { ...state, riders: state.riders.map(r => r.id === action.rider.id ? action.rider : r) };
     case 'ADD_AFFILIATE': return { ...state, affiliates: [action.affiliate, ...state.affiliates] };
     case 'UPDATE_AFFILIATE': return { ...state, affiliates: state.affiliates.map(a => a.id === action.affiliate.id ? action.affiliate : a) };
+    case 'ADD_AFFILIATE_WAITLIST': {
+      const email = action.email.trim().toLowerCase();
+      if (!email || state.affiliateWaitlist.some(e => e.email === email)) return state;
+      return { ...state, affiliateWaitlist: [...state.affiliateWaitlist, { email, at: new Date().toISOString() }] };
+    }
     case 'ADD_STAFF': return { ...state, staff: [action.member, ...state.staff] };
     case 'UPDATE_STAFF': return { ...state, staff: state.staff.map(m => m.id === action.member.id ? action.member : m) };
     case 'ADD_PROBLEM_REPORT': return { ...state, problemReports: [action.report, ...state.problemReports] };
@@ -246,6 +288,11 @@ interface AppContextType {
   cartTotal: number;
   cartCount: number;
   cartDeliveryFee: number;
+  /** Area fee before any pass / free-delivery-promo waiver. */
+  cartDeliveryFeeRaw: number;
+  /** Why the delivery fee is waived, if it is: active delivery
+   * pass first, then a free-delivery promo. */
+  cartFeeWaiver: 'pass' | 'promo' | null;
   cartDiscount: number;
   cartFinal: number;
   unreadCount: number;
@@ -281,6 +328,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (saved.orders) hydrated.orders = saved.orders;
       if (saved.riders) hydrated.riders = saved.riders;
       if (saved.affiliates) hydrated.affiliates = saved.affiliates;
+      if (saved.affiliateWaitlist) hydrated.affiliateWaitlist = saved.affiliateWaitlist;
       if (saved.staff) hydrated.staff = saved.staff;
       if (saved.problemReports) hydrated.problemReports = saved.problemReports;
       if (saved.reviews) hydrated.reviews = saved.reviews;
@@ -292,7 +340,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (saved.promos) hydrated.promos = saved.promos;
       if (saved.adminSettings) hydrated.adminSettings = saved.adminSettings;
       if (saved.notifications) hydrated.notifications = saved.notifications;
+      if (saved.addresses) hydrated.addresses = saved.addresses;
+      if (saved.appliedPromo !== undefined) hydrated.appliedPromo = saved.appliedPromo;
+      if (saved.serviceOverride) hydrated.serviceOverride = saved.serviceOverride;
     }
+    const override = hydrated.serviceOverride ?? 'auto';
+    hydrated.isServiceOpen = override === 'auto' ? isWithinServiceHours() : override === 'open';
     if (hydrated.isLoggedIn && !hydrated.user && hydrated.role) {
       hydrated.user = DEMO_USERS[hydrated.role as UserRole] ?? DEMO_USERS.customer;
     }
@@ -312,6 +365,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       orders: state.orders,
       riders: state.riders,
       affiliates: state.affiliates,
+      affiliateWaitlist: state.affiliateWaitlist,
       staff: state.staff,
       problemReports: state.problemReports,
       reviews: state.reviews,
@@ -323,29 +377,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       promos: state.promos,
       adminSettings: state.adminSettings,
       notifications: state.notifications,
+      addresses: state.addresses,
+      appliedPromo: state.appliedPromo,
+      serviceOverride: state.serviceOverride,
     };
     lsSet(DATA_KEY, data);
-  }, [state.orders, state.riders, state.affiliates, state.staff, state.problemReports,
+  }, [state.orders, state.riders, state.affiliates, state.affiliateWaitlist, state.staff, state.problemReports,
       state.reviews, state.paymentRequests, state.products, state.areas, state.activityLog,
-      state.restaurants, state.promos, state.adminSettings, state.notifications]);
+      state.restaurants, state.promos, state.adminSettings, state.notifications,
+      state.addresses, state.appliedPromo, state.serviceOverride]);
+
+  // Re-derive the time-based open state while the app is open
+  // (no-op whenever the admin override is engaged).
+  useEffect(() => {
+    const t = setInterval(() => dispatch({ type: 'SERVICE_TICK' }), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   // Computed values
   const currentArea = state.areas.find(a => a.id === state.selectedAreaId);
-  const cartDeliveryFee = currentArea?.fee ?? 20;
+  const cartDeliveryFeeRaw = currentArea?.fee ?? 20;
 
   const cartTotal = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Delivery-fee waiver: an active delivery pass waives the fee,
+  // and so does a free-delivery promo (e.g. JOVROFREE). The fee
+  // itself drops to 0 — item discounts stay separate.
+  const cartFeeWaiver: 'pass' | 'promo' | null = state.user?.hasActivePass
+    ? 'pass'
+    : state.appliedPromo?.discountType === 'free-delivery'
+      ? 'promo'
+      : null;
+  const cartDeliveryFee = cartFeeWaiver ? 0 : cartDeliveryFeeRaw;
 
   let cartDiscount = 0;
   if (state.appliedPromo) {
     const p = state.appliedPromo;
     if (p.discountType === 'flat') cartDiscount = p.discountValue;
-    else if (p.discountType === 'free-delivery') cartDiscount = cartDeliveryFee;
+    else if (p.discountType === 'free-delivery') cartDiscount = 0; // fee waived above
     else cartDiscount = Math.min(Math.floor(cartTotal * p.discountValue / 100), p.maxDiscount ?? Infinity);
   }
 
   const cartFinal = cartTotal + cartDeliveryFee - cartDiscount;
-  const unreadCount = state.notifications.filter(n => !n.isRead).length;
+  // Customers only count their own notifications (+ global ones).
+  const unreadCount = state.notifications.filter(n =>
+    (!state.user || n.userId === state.user.id || n.userId === 'all') && !n.isRead,
+  ).length;
 
   const validatePromo = useCallback((code: string): PromoCode | null => {
     const promo = state.promos.find(p => p.code.toUpperCase() === code.toUpperCase() && p.isActive);
@@ -360,9 +438,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: AppContextType = useMemo(() => ({
     state, dispatch,
-    cartTotal, cartCount, cartDeliveryFee, cartDiscount, cartFinal,
+    cartTotal, cartCount, cartDeliveryFee, cartDeliveryFeeRaw, cartFeeWaiver, cartDiscount, cartFinal,
     unreadCount, currentArea, validatePromo, t,
-  }), [state, cartTotal, cartCount, cartDeliveryFee, cartDiscount, cartFinal, unreadCount, currentArea, validatePromo, t]);
+  }), [state, cartTotal, cartCount, cartDeliveryFee, cartDeliveryFeeRaw, cartFeeWaiver, cartDiscount, cartFinal, unreadCount, currentArea, validatePromo, t]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
