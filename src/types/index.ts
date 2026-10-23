@@ -11,6 +11,7 @@ export interface User {
   name: string;
   nameBn: string;
   mobile: string;
+  altMobile?: string;
   email?: string;
   role: UserRole;
   avatarUrl?: string;
@@ -239,6 +240,16 @@ export interface Affiliate {
   pendingPayout: number;
   joinedAt: string;
   commissionRate?: number; // ৳ per order — set by admin (H26)
+}
+
+// ── Affiliate waitlist ───────────────────────────────────────
+// The affiliate programme is CLOSED at launch: entry points show
+// a closed notice and collect emails here instead of taking new
+// applications. Reopening = route the apply flow back to
+// AffiliateApplyScreen and drop the gate in AffiliateScreen.
+export interface AffiliateWaitlistEntry {
+  email: string;
+  at: string; // ISO timestamp
 }
 
 // ── Staff Member ───────────────────────────────────────────────
