@@ -87,6 +87,22 @@ export function cashToCollect(order: Order): number {
   return order.finalTotal;
 }
 
+/** Company cut kept from an order's delivery fee. Uses the cut
+ *  frozen on the order at delivery time when present
+ *  (fee − riderEarning); otherwise the currently configured
+ *  cut, clamped to the fee. */
+export function companyCutOf(order: Order, configuredCut: number): number {
+  if (typeof order.riderEarning === 'number') {
+    return Math.max(0, order.deliveryFee - order.riderEarning);
+  }
+  return Math.min(Math.max(0, configuredCut), order.deliveryFee);
+}
+
+/** What the rider earned (earns) for an order: fee − cut. */
+export function riderEarningOf(order: Order, configuredCut: number): number {
+  return order.deliveryFee - companyCutOf(order, configuredCut);
+}
+
 let uidCounter = 0;
 export function uid(prefix: string): string {
   uidCounter += 1;
