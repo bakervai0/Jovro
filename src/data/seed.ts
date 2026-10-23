@@ -211,6 +211,7 @@ export const SAMPLE_STAFF: StaffMember[] = [
 
 // ── Promo Codes ─────────────────────────────────────────────────
 export const PROMO_CODES: PromoCode[] = [
+  { code: 'JOVROFREE', descriptionBn: 'ফ্রি ডেলিভারি — সব অর্ডারে', descriptionEn: 'Free delivery on all orders', discountType: 'free-delivery', discountValue: 0, minOrder: 0, isActive: true, usedCount: 0, usageLimit: 100000 },
   { code: 'JOVRO50', descriptionBn: 'প্রথম অর্ডারে ৳৫০ ছাড়', descriptionEn: '৳50 off on first order', discountType: 'flat', discountValue: 50, minOrder: 200, isActive: true, usedCount: 12, usageLimit: 100 },
   { code: 'NEWUSER', descriptionBn: 'নতুন ব্যবহারকারীর জন্য ১০% ছাড়', descriptionEn: '10% off for new users', discountType: 'percent', discountValue: 10, minOrder: 150, maxDiscount: 80, isActive: true, usedCount: 34, usageLimit: 200 },
   { code: 'SAVE30', descriptionBn: '৳৩০ ছাড়', descriptionEn: '৳30 flat discount', discountType: 'flat', discountValue: 30, minOrder: 150, isActive: false, usedCount: 18, usageLimit: 50 },
