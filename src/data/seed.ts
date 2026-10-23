@@ -283,6 +283,10 @@ export const REFERRALS_SEED: ReferralRecord[] = [
 
 // ── Admin settings / home marketing (H9/H11/H15) ─────────────
 export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
+  riderIntakeOpen: true,
+  riderCap: 5,
+  companyCutPerDelivery: 10,
+  companyFundTotal: 0,
   serviceHours: 'সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০',
   deliverySlots: ['সকাল ৬:০০–দুপুর ১:৩০', 'বিকেল ৪:৩০–রাত ১০:৩০'],
   passPrice: 1000,
@@ -293,7 +297,7 @@ export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
     { id: 'banner-2', image: '🍛', headlineBn: 'বিরিয়ানি অফার', headlineEn: 'Biryani offer', subBn: 'নির্বাচিত রেস্টুরেন্টে', subEn: 'At selected restaurants', isActive: true },
     { id: 'banner-3', image: '🚲', headlineBn: 'দ্রুত ডেলিভারি', headlineEn: 'Fast delivery', subBn: 'সদরের সব এলাকায়', subEn: 'Across Sadar areas', isActive: false },
   ],
-  flashSaleProductIds: ['p-01', 'p-19'],
+  flashSaleProductIds: ['p-09', 'p-07', 'p-25'],
   flashSaleDiscount: 10,
   flashSaleStart: '2024-11-10',
   flashSaleEnd: '2024-11-12',
