@@ -189,7 +189,7 @@ export default function ProfileScreen() {
             <Divider />
             <MenuItem icon="privacy_tip" labelBn="গোপনীয়তা নীতি" labelEn="Privacy Policy" onClick={() => navigate('/privacy')} />
             <Divider />
-            <MenuItem icon="info_outline" labelBn="অ্যাপ সম্পর্কে" labelEn="About App" badge="v1.0" onClick={() => navigate('/about')} />
+            <MenuItem icon="info" labelBn="অ্যাপ সম্পর্কে" labelEn="About App" badge="v1.0" onClick={() => navigate('/about')} />
           </MenuSection>
         </div>
 
