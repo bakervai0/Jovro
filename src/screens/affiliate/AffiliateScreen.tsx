@@ -6,6 +6,7 @@ import { TopAppBar } from '../../components/layout/TopAppBar';
 import { Button } from '../../components/ui/Button';
 import { DemoRoleSwitcher } from '../../components/shared/DemoRoleSwitcher';
 import { useCurrentAffiliate } from '../../components/shared/AffiliateBits';
+import AffiliateClosedScreen from './AffiliateClosedScreen';
 import AffiliateHomeScreen from './AffiliateHomeScreen';
 import ReferralToolsScreen from './ReferralToolsScreen';
 import AffiliateEarningsScreen from './AffiliateEarningsScreen';
@@ -17,10 +18,14 @@ const TABS = [
 ];
 
 /**
- * Affiliate section shell (Section I). If the signed-in user's
- * affiliate record is still pending, the I2 pending notice is
- * shown instead of the dashboard. The seeded demo affiliate
- * (aff-01) stays active so the dashboard is demoable.
+ * Affiliate section shell (Section I). The programme is CLOSED
+ * at launch: only a user with an affiliate record of their OWN
+ * gets in — pending shows the I2 pending notice, active shows
+ * the dashboard. Everyone else (no record, or an inactive one)
+ * sees the closed notice + email waitlist instead, so the
+ * affiliate screens are unreachable for new users. The seeded
+ * demo affiliate (aff-01, user u-003) stays active so the
+ * dashboard is demoable via the demo role switcher.
  */
 export default function AffiliateScreen() {
   const { state, dispatch } = useApp();
@@ -28,8 +33,13 @@ export default function AffiliateScreen() {
   const { pathname } = useLocation();
   const bn = state.lang === 'bn';
   const affiliate = useCurrentAffiliate();
+  const myAffiliate = state.affiliates.find(a => a.userId === state.user?.id);
 
-  if (affiliate?.status === 'pending') {
+  if (myAffiliate?.status !== 'active' && myAffiliate?.status !== 'pending') {
+    return <AffiliateClosedScreen />;
+  }
+
+  if (myAffiliate?.status === 'pending') {
     return (
       <div className="flex-1 flex flex-col bg-surface overflow-hidden">
         <TopAppBar title={bn ? 'অ্যাফিলিয়েট' : 'Affiliate'} />
