@@ -538,7 +538,7 @@ export default function ProductDetailScreen() {
       </div>
 
       {/* Floating chat button (app pattern) */}
-      <div className="fixed bottom-[88px] left-1/2 -translate-x-1/2 w-full max-w-app z-40 pointer-events-none">
+      <div className="fixed bottom-[148px] left-1/2 -translate-x-1/2 w-full max-w-app z-40 pointer-events-none">
         <div className="flex justify-end px-4">
           <button
             type="button"
@@ -553,7 +553,7 @@ export default function ProductDetailScreen() {
       </div>
 
       {/* Sticky bottom purchase bar */}
-      <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-app z-50 bg-surface-container-lowest/95 backdrop-blur-md border-t border-outline-variant/30 py-2.5 px-margin shadow-lg">
+      <footer className="fixed bottom-[68px] left-1/2 -translate-x-1/2 w-full max-w-app z-50 bg-surface-container-lowest/95 backdrop-blur-md border-t border-outline-variant/30 py-2.5 px-margin shadow-lg">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col flex-shrink-0 min-w-[110px]">
             <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">{bn ? 'মোট আনুমানিক' : 'Total estimate'}</span>
