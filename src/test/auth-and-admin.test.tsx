@@ -37,6 +37,16 @@ describe('authentication', () => {
     expect(await screen.findByText(/Demo code: 1234/)).toBeInTheDocument();
   });
 
+  it('switches roles instantly from the login screen demo switcher', async () => {
+    const { user } = await renderAt('/login');
+    await user.click(await screen.findByRole('button', { name: /ডেমো মোড/ }));
+    const rider = await screen.findByRole('button', { name: /রাইডার/ });
+    await user.click(rider);
+
+    await waitFor(() => expect(window.location.pathname).toBe('/rider'), { timeout: 8000 });
+    expect(JSON.parse(localStorage.getItem('jovro_role') || '"customer"')).toBe('rider');
+  });
+
   it('keeps the onboarding flow reachable without a session', async () => {
     await renderAt('/lang');
     await screen.findAllByText(/ভাষা|Language/i);
