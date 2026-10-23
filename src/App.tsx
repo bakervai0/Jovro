@@ -40,6 +40,13 @@ const RefundPolicyScreen = lazy(() => import('./screens/info/RefundPolicyScreen'
 const DeliveryFeesScreen = lazy(() => import('./screens/info/DeliveryFeesScreen'));
 
 const RiderHomeScreen = lazy(() => import('./screens/rider/RiderHomeScreen'));
+const RiderOrderDetailScreen = lazy(() => import('./screens/rider/RiderOrderDetailScreen'));
+const RiderHistoryScreen = lazy(() => import('./screens/rider/RiderHistoryScreen'));
+const RiderEarningsScreen = lazy(() => import('./screens/rider/RiderEarningsScreen'));
+const RiderProfileScreen = lazy(() => import('./screens/rider/RiderProfileScreen'));
+const RiderPendingScreen = lazy(() => import('./screens/rider/RiderPendingScreen'));
+const RiderApplyScreen = lazy(() => import('./screens/rider/RiderApplyScreen'));
+const AffiliateApplyScreen = lazy(() => import('./screens/affiliate/AffiliateApplyScreen'));
 const AdminScreen = lazy(() => import('./screens/admin/AdminScreen'));
 const AffiliateScreen = lazy(() => import('./screens/affiliate/AffiliateScreen'));
 const StaffScreen = lazy(() => import('./screens/staff/StaffScreen'));
@@ -74,6 +81,19 @@ function CustomerLayout() {
 
 // ── Rider layout ───────────────────────────────────────────────
 function RiderLayout() {
+  const { state } = useApp();
+  // F3: a rider whose application is still pending sees the
+  // approval notice instead of the dashboard. The rider record
+  // is matched by the signed-in user's id (seeded demo rider
+  // rider-01 stays active, so the dashboard stays demoable).
+  const myRider = state.riders.find(r => r.userId === state.user?.id);
+  if (myRider?.status === 'pending') {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <RiderPendingScreen />
+      </div>
+    );
+  }
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <Outlet />
@@ -140,11 +160,18 @@ function AppRoutes() {
           <Route path="/terms" element={<TermsScreen />} />
           <Route path="/refund-policy" element={<RefundPolicyScreen />} />
           <Route path="/delivery-fees" element={<DeliveryFeesScreen />} />
+          {/* Phase 5 — applications (F1 / I1) */}
+          <Route path="/apply-rider" element={<RiderApplyScreen />} />
+          <Route path="/apply-affiliate" element={<AffiliateApplyScreen />} />
         </Route>
 
         {/* Rider */}
         <Route path="/rider" element={<AuthGuard><RiderLayout /></AuthGuard>}>
           <Route index element={<RiderHomeScreen />} />
+          <Route path="orders/:id" element={<RiderOrderDetailScreen />} />
+          <Route path="history" element={<RiderHistoryScreen />} />
+          <Route path="earnings" element={<RiderEarningsScreen />} />
+          <Route path="profile" element={<RiderProfileScreen />} />
         </Route>
 
         {/* Admin/Affiliate/Staff – simple wrappers */}

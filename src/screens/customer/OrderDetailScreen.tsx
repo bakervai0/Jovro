@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { TopAppBar } from '../../components/layout/TopAppBar';
 import { Button } from '../../components/ui/Button';
 import { ConfirmSheet } from '../../components/ui/BottomSheet';
 import { cancelOrder } from '../../services/orders';
+import { uid } from '../../services/orderUtils';
 import type { OrderStatus } from '../../types';
 
 const STATUS_STEPS: OrderStatus[] = ['pending', 'confirmed', 'buying', 'on-the-way', 'delivered'];
@@ -16,6 +17,7 @@ const STATUS_LABEL: Record<OrderStatus, { bn: string; en: string; icon: string }
   buying: { bn: 'কেনাকাটা', en: 'Buying', icon: 'shopping_basket' },
   'on-the-way': { bn: 'আসছে', en: 'On the way', icon: 'directions_bike' },
   delivered: { bn: 'ডেলিভারি হয়েছে', en: 'Delivered', icon: 'task_alt' },
+  failed: { bn: 'ডেলিভারি ব্যর্থ হয়েছে', en: 'Delivery failed', icon: 'error' },
   cancelled: { bn: 'বাতিল', en: 'Cancelled', icon: 'cancel' },
   'refund-in-progress': { bn: 'রিফান্ড হচ্ছে', en: 'Refunding', icon: 'currency_exchange' },
   refunded: { bn: 'রিফান্ড হয়েছে', en: 'Refunded', icon: 'paid' },
@@ -24,9 +26,13 @@ const STATUS_LABEL: Record<OrderStatus, { bn: string; en: string; icon: string }
 export default function OrderDetailScreen() {
   const { id } = useParams<{ id: string }>();
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
   const lang = state.lang;
+  const bn = lang === 'bn';
   const [cancelling, setCancelling] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [showProof, setShowProof] = useState(false);
 
   const order = state.orders.find(o => o.id === id);
 
@@ -129,6 +135,203 @@ export default function OrderDetailScreen() {
             <p className="text-body-sm text-error font-medium">
               {lang === 'bn' ? 'এই অর্ডারটি বাতিল হয়েছে।' : 'This order has been cancelled.'}
             </p>
+          </div>
+        )}
+
+        {/* Failed banner */}
+        {order.status === 'failed' && (
+          <div className="mx-4 my-4 p-4 bg-error/10 border border-error/20 rounded-3xl flex items-center gap-3">
+            <span className="material-symbols-outlined text-error text-[24px]">error</span>
+            <div>
+              <p className="text-body-sm text-error font-medium">
+                {lang === 'bn' ? 'দুঃখিত, ডেলিভারি সম্পন্ন করা যায়নি।' : 'Sorry, the delivery could not be completed.'}
+              </p>
+              {order.failReason && (
+                <p className="text-label-sm text-error/80 mt-0.5">
+                  {lang === 'bn' ? `কারণ: ${order.failReason}` : `Reason: ${order.failReason}`}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* H20: refund progress — set by admin from the problem inbox */}
+        {order.refundStatus && (
+          <div className={clsx(
+            'mx-4 my-4 p-4 border rounded-3xl flex items-start gap-3',
+            order.refundStatus === 'paid'
+              ? 'bg-success/10 border-success/30'
+              : 'bg-warning/10 border-warning/30',
+          )}>
+            <span className={clsx(
+              'material-symbols-outlined text-[24px]',
+              order.refundStatus === 'paid' ? 'text-success' : 'text-warning',
+            )}>currency_exchange</span>
+            <div>
+              <p className={clsx('text-body-sm font-semibold', order.refundStatus === 'paid' ? 'text-success' : 'text-on-surface')}>
+                {order.refundStatus === 'paid'
+                  ? (lang === 'bn' ? 'রিফান্ড সম্পন্ন ✓' : 'Refund completed ✓')
+                  : (lang === 'bn' ? 'রিফান্ড প্রক্রিয়াধীন' : 'Refund in progress')}
+              </p>
+              <p className="text-label-md text-on-surface-variant mt-0.5">
+                {lang === 'bn'
+                  ? `৳${order.refundAmount ?? order.finalTotal} · ${order.refundMethod === 'nagad' ? 'নগদ' : order.refundMethod === 'cash' ? 'ক্যাশ' : 'বিকাশ'}${order.refundDays ? ` · ${order.refundDays} কর্মদিবসের মধ্যে` : ''}`
+                  : `৳${order.refundAmount ?? order.finalTotal} · ${order.refundMethod ?? 'bkash'}${order.refundDays ? ` · within ${order.refundDays} working days` : ''}`}
+              </p>
+              {order.refundNote && <p className="text-label-sm text-on-surface-variant mt-1">{order.refundNote}</p>}
+            </div>
+          </div>
+        )}
+
+        {/* F13: delivery-proof — customer confirms receipt (Stitch g4) */}
+        {order.status === 'delivered' && (
+          <div className="mx-4 my-4 flex flex-col gap-3">
+            <div className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/30 shadow-sm text-center space-y-4">
+              <div className="relative w-20 h-20 mx-auto">
+                <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center text-primary mx-auto">
+                  <span className="material-symbols-outlined text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>package_2</span>
+                </div>
+                <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow">
+                  <span className="material-symbols-outlined text-base font-bold">check</span>
+                </span>
+              </div>
+              <div>
+                <h2 className="text-headline-md font-headline-md font-bold text-on-surface">
+                  {bn ? 'আপনার অর্ডার পৌঁছে গেছে!' : 'Your order has arrived!'}
+                </h2>
+                <p className="text-body-md font-body-md text-on-surface-variant font-medium mt-0.5">Your order was delivered successfully</p>
+              </div>
+              <div className="bg-surface-container-low rounded-xl p-3 w-full border border-outline-variant/20">
+                <div className="flex items-center justify-center gap-1.5 text-on-surface font-semibold text-body-md">
+                  <span className="material-symbols-outlined text-primary text-lg">schedule</span>
+                  <span>
+                    {new Date(order.updatedAt).toLocaleTimeString(bn ? 'bn-BD' : 'en-BD', { hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                  <span className="text-outline-variant">•</span>
+                  <span className="text-primary font-bold">{bn ? 'সময়মতো সম্পন্ন' : 'Completed on time'}</span>
+                </div>
+                {(() => {
+                  const rider = state.riders.find(r => r.id === order.riderId);
+                  if (!rider) return null;
+                  return (
+                    <div className="mt-1 flex items-center justify-center gap-1.5 text-body-sm font-body-sm text-on-surface-variant">
+                      <span className="material-symbols-outlined text-base">pedal_bike</span>
+                      <span>
+                        {bn ? 'রাইডার' : 'Rider'}: {bn ? rider.nameBn : rider.name} ({rider.vehicleType === 'motorbike' ? (bn ? 'মোটরবাইক ডেলিভারি' : 'Motorbike delivery') : (bn ? 'সাইকেল ডেলিভারি' : 'Bicycle delivery')})
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {order.customerReceived ? (
+                <div className="p-4 bg-success/10 border border-success/30 rounded-2xl flex items-center gap-3 text-left">
+                  <span className="material-symbols-outlined text-success text-[26px]">verified</span>
+                  <p className="text-body-sm text-success font-semibold">
+                    {bn ? 'আপনি পণ্য পেয়েছি নিশ্চিত করেছেন ✓ ধন্যবাদ!' : 'You confirmed receipt ✓ Thank you!'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="pt-1 pb-1">
+                    <p className="text-label-md font-label-md text-on-surface-variant mb-2">
+                      {bn ? 'রাইডারের সেবা রেট করুন' : 'Rate the rider’s service'}
+                    </p>
+                    <div className="flex items-center justify-center gap-2">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          onClick={() => setRating(star)}
+                          aria-label={`${star} star`}
+                          className={clsx(
+                            'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
+                            star <= rating ? 'bg-secondary-fixed text-secondary' : 'bg-surface-container text-outline-variant',
+                          )}
+                        >
+                          <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3 pt-2">
+                    <button
+                      onClick={() => {
+                        dispatch({
+                          type: 'UPDATE_ORDER',
+                          order: { ...order, customerReceived: true, updatedAt: new Date().toISOString() },
+                        });
+                        if (rating > 0) {
+                          dispatch({
+                            type: 'ADD_REVIEW',
+                            review: {
+                              id: uid('rev'),
+                              orderId: order.id,
+                              customerId: order.customerId,
+                              customerName: order.customerName,
+                              rating,
+                              createdAt: new Date().toISOString(),
+                              isApproved: false,
+                              isHidden: false,
+                            },
+                          });
+                        }
+                      }}
+                      className="w-full h-[50px] rounded-full bg-primary text-on-primary font-headline-sm text-headline-sm flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
+                    >
+                      <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+                      <span>{bn ? 'পণ্য পেয়েছি ✓ / I received my order' : 'I received my order ✓'}</span>
+                    </button>
+                    <button
+                      onClick={() => navigate(`/report?order=${order.id}`)}
+                      className="w-full py-2 text-label-md font-label-md text-on-surface-variant flex items-center justify-center gap-1"
+                    >
+                      <span>{bn ? 'পাইনি বা কোনো সমস্যা আছে? / Not received or a problem?' : 'Not received or a problem?'}</span>
+                      <span className="material-symbols-outlined text-base">arrow_forward</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-[#FFF7ED] border border-[#F97316]/30 rounded-2xl p-3.5 flex items-start gap-3">
+              <span className="w-7 h-7 rounded-full bg-[#F97316]/10 text-[#C2410C] shrink-0 flex items-center justify-center mt-0.5">
+                <span className="material-symbols-outlined text-lg">receipt</span>
+              </span>
+              <div>
+                <p className="text-body-md font-body-md font-bold text-[#C2410C]">
+                  {bn ? 'বাজারের মূল ক্যাশ মেমো প্যাকেটের সাথে সংযুক্ত আছে।' : 'The original bazaar cash memo is attached with the packet.'}
+                </p>
+                <p className="text-body-sm font-body-sm text-on-surface-variant mt-0.5">
+                  {bn ? 'ভাউচার দেখে মূল্য যাচাই করুন। কোনো গরমিল পেলে সরাসরি অ্যাপে জানান।' : 'Check prices against the voucher. Report any mismatch in the app.'}
+                </p>
+              </div>
+            </div>
+
+            {order.proofPhotoUrl && (
+              <div className="bg-surface-container-lowest rounded-2xl p-3.5 border border-outline-variant/30 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary border border-outline-variant/30 overflow-hidden shrink-0">
+                      <img src={order.proofPhotoUrl} alt="delivery proof" className="w-full h-full object-cover" />
+                    </span>
+                    <div className="text-left">
+                      <p className="text-label-md font-label-md text-on-surface font-semibold">{bn ? 'ডেলিভারি প্রমাণ ছবি দেখুন' : 'View delivery proof photo'}</p>
+                      <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">{bn ? 'রাইডার কর্তৃক আপলোডকৃত ছবি' : 'Photo uploaded by the rider'}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowProof(v => !v)}
+                    className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface font-bold text-label-sm border border-outline-variant/40 flex items-center gap-1 shrink-0"
+                  >
+                    <span>{showProof ? (bn ? 'লুকান' : 'Hide') : (bn ? 'দেখুন' : 'View')}</span>
+                    <span className="material-symbols-outlined text-sm">visibility</span>
+                  </button>
+                </div>
+                {showProof && (
+                  <img src={order.proofPhotoUrl} alt="delivery proof" className="w-full h-52 object-cover rounded-xl mt-3 border border-outline-variant/30" />
+                )}
+              </div>
+            )}
           </div>
         )}
 
