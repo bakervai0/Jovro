@@ -6,14 +6,35 @@ import { useCurrentRider } from '../../components/shared/RiderBits';
 import {
   dayKey, latestOrderDay, fmtTk, toBnDigits, STATUS_META,
 } from '../../services/orderUtils';
+import { OPERATOR } from '../../data/infoContent';
 import type { Order } from '../../types';
 
 const BN_MONTHS = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+const BN_WEEKDAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
+const EN_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function fmtDayTitle(day: string, lang: 'bn' | 'en'): string {
   const d = new Date(`${day}T00:00:00`);
   if (lang === 'en') return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   return `${toBnDigits(d.getDate(), 'bn')} ${BN_MONTHS[d.getMonth()]}, ${toBnDigits(d.getFullYear(), 'bn')}`;
+}
+
+function fmtShortDay(day: string, lang: 'bn' | 'en'): string {
+  const d = new Date(`${day}T00:00:00`);
+  if (lang === 'en') return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return `${toBnDigits(d.getDate(), 'bn')} ${BN_MONTHS[d.getMonth()]}`;
+}
+
+function fmtWeekday(day: string, lang: 'bn' | 'en'): string {
+  const d = new Date(`${day}T00:00:00`);
+  return lang === 'bn' ? BN_WEEKDAYS[d.getDay()] : EN_WEEKDAYS[d.getDay()];
+}
+
+function dayShiftKey(anchor: string, daysBack: number): string {
+  const d = new Date(`${anchor}T00:00:00`);
+  d.setDate(d.getDate() - daysBack);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function fmtTime(iso: string, lang: 'bn' | 'en'): string {
@@ -28,9 +49,11 @@ function fmtTime(iso: string, lang: 'bn' | 'en'): string {
 }
 
 /**
- * F6 — Delivery history, aligned to Stitch r2.2: rider strip,
- * week/month summary cards, then a day-by-day expandable log of
- * every assigned order (rows open the F9 detail).
+ * F6 — Delivery history, strict Stitch r2.2 replica: header, rider
+ * strip, week/month summary cards (with the design's blurred accent
+ * circles), day-by-day expandable log (today expanded; collapsed
+ * days carry Yesterday badge / weekday label), verification footer
+ * and WhatsApp FAB. Rows open the F9 rider order detail.
  */
 export default function RiderHistoryScreen() {
   const { state, dispatch } = useApp();
@@ -47,6 +70,7 @@ export default function RiderHistoryScreen() {
   );
 
   const anchor = latestOrderDay(state.orders);
+  const yesterday = dayShiftKey(anchor, 1);
   const anchorDate = new Date(`${anchor}T00:00:00`);
   const inLastDays = (iso: string, days: number) => {
     const d = new Date(`${dayKey(iso)}T00:00:00`);
@@ -75,7 +99,12 @@ export default function RiderHistoryScreen() {
   const [openDay, setOpenDay] = useState<string | null>(null);
   const effectiveOpen = openDay ?? groups[0]?.[0];
 
-  const riderInitial = (bn ? rider?.nameBn : rider?.name)?.trim().charAt(0) ?? 'র';
+  /* r2.2 avatar shows name initials (রফিকুল ইসলাম → রই). */
+  const riderFullName = (bn ? rider?.nameBn : rider?.name) ?? '';
+  const nameParts = riderFullName.trim().split(/\s+/).filter(Boolean);
+  const riderInitials = nameParts.length > 1
+    ? `${nameParts[0].charAt(0)}${nameParts[1].charAt(0)}`
+    : (nameParts[0]?.charAt(0) ?? 'র');
 
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden">
@@ -100,11 +129,11 @@ export default function RiderHistoryScreen() {
         </button>
       </header>
 
-      {/* Rider strip */}
+      {/* Rider strip (r2.2) */}
       <div className="bg-surface-container-lowest px-4 pt-3 pb-3 border-b border-outline-variant/20 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary font-bold text-body-lg ring-2 ring-primary/20 shrink-0">
-            {riderInitial}
+            {riderInitials}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
@@ -126,9 +155,10 @@ export default function RiderHistoryScreen() {
       </div>
 
       <PageFrame>
-        {/* Week / month summary cards */}
+        {/* Week / month summary cards (r2.2) */}
         <section className="grid grid-cols-2 gap-3 mt-4">
           <div className="bg-surface-container-lowest rounded-xl p-3 border-2 border-secondary-container/40 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            <div className="absolute -right-4 -bottom-4 w-14 h-14 bg-secondary-fixed/30 rounded-full blur-sm pointer-events-none" />
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-label-md font-label-md text-secondary font-bold flex items-center gap-1">
@@ -137,11 +167,15 @@ export default function RiderHistoryScreen() {
                 </span>
                 <span className="text-[10px] text-on-surface-variant font-medium">This week</span>
               </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-headline-md font-headline-md font-bold text-on-surface">{toBnDigits(weekDone.length, lang)}</span>
-                <span className="text-label-sm font-label-sm text-on-surface-variant">{bn ? 'টা ডেলিভারি' : 'deliveries'}</span>
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-headline-md font-headline-md font-bold text-on-surface">{toBnDigits(weekDone.length, lang)}</span>
+                  <span className="text-label-sm font-label-sm text-on-surface-variant">{bn ? 'টা ডেলিভারি' : 'deliveries'}</span>
+                </div>
+                <div className="flex items-center gap-1 text-primary font-bold">
+                  <span className="text-body-md font-body-md">{bn ? 'আয়' : 'Earned'} {fmtTk(weekEarned, lang)}</span>
+                </div>
               </div>
-              <p className="text-body-md font-body-md text-primary font-bold">{bn ? 'আয়' : 'Earned'} {fmtTk(weekEarned, lang)}</p>
             </div>
             <div className="mt-3 pt-2 border-t border-outline-variant/30">
               <div className="flex justify-between text-bilingual-sub font-bilingual-sub text-on-surface-variant mb-1">
@@ -154,6 +188,7 @@ export default function RiderHistoryScreen() {
             </div>
           </div>
           <div className="bg-surface-container-lowest rounded-xl p-3 border-2 border-secondary-container/40 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            <div className="absolute -right-4 -bottom-4 w-14 h-14 bg-primary-fixed/20 rounded-full blur-sm pointer-events-none" />
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-label-md font-label-md text-secondary font-bold flex items-center gap-1">
@@ -162,11 +197,15 @@ export default function RiderHistoryScreen() {
                 </span>
                 <span className="text-[10px] text-on-surface-variant font-medium">This month</span>
               </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-headline-md font-headline-md font-bold text-on-surface">{toBnDigits(monthDone.length, lang)}</span>
-                <span className="text-label-sm font-label-sm text-on-surface-variant">{bn ? 'টা ডেলিভারি' : 'deliveries'}</span>
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-headline-md font-headline-md font-bold text-on-surface">{toBnDigits(monthDone.length, lang)}</span>
+                  <span className="text-label-sm font-label-sm text-on-surface-variant">{bn ? 'টা ডেলিভারি' : 'deliveries'}</span>
+                </div>
+                <div className="flex items-center gap-1 text-primary font-bold">
+                  <span className="text-body-md font-body-md">{bn ? 'আয়' : 'Earned'} {fmtTk(monthEarned, lang)}</span>
+                </div>
               </div>
-              <p className="text-body-md font-body-md text-primary font-bold">{bn ? 'আয়' : 'Earned'} {fmtTk(monthEarned, lang)}</p>
             </div>
             <div className="mt-3 pt-2 border-t border-outline-variant/30 flex items-center justify-between">
               <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">{bn ? 'রেটিং স্কোর' : 'Rating score'}</span>
@@ -178,7 +217,7 @@ export default function RiderHistoryScreen() {
           </div>
         </section>
 
-        {/* Day-by-day log */}
+        {/* Section title & filter chip (r2.2) */}
         <div className="pt-4 flex items-center justify-between">
           <div>
             <h2 className="text-headline-sm font-headline-sm text-on-surface font-bold">{bn ? 'দৈনিক ডেলিভারি লগ' : 'Daily delivery log'}</h2>
@@ -204,76 +243,115 @@ export default function RiderHistoryScreen() {
               const active = orders.filter(o => !['delivered', 'failed', 'cancelled'].includes(o.status));
               const earned = done.reduce((s, o) => s + o.deliveryFee, 0);
               const isToday = day === anchor;
+              const isYesterday = day === yesterday;
               const open = effectiveOpen === day;
+              const relShort = isToday ? (bn ? 'আজ' : 'Today')
+                : isYesterday ? (bn ? 'গতকাল' : 'Yesterday')
+                  : fmtShortDay(day, lang);
               return (
-                <article key={day} className={`bg-surface-container-lowest rounded-xl border-2 shadow-sm overflow-hidden ${isToday ? 'border-primary/40' : 'border-outline-variant/30'}`}>
+                <article
+                  key={day}
+                  className={open
+                    ? 'bg-surface-container-lowest rounded-xl border-2 border-primary/40 shadow-sm overflow-hidden transition-all duration-200'
+                    : 'bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden hover:border-primary/40 transition-colors'}
+                >
                   <button
                     onClick={() => setOpenDay(open ? '' : day)}
-                    className="w-full p-3 bg-surface-container-low/60 border-b border-outline-variant/30 flex items-center justify-between text-left"
+                    className={`w-full p-3 flex items-center justify-between text-left ${open ? 'bg-surface-container-low/60 border-b border-outline-variant/30' : ''}`}
                   >
-                    <div className="space-y-1">
+                    <div className={open ? 'space-y-1' : 'space-y-0.5'}>
                       <div className="flex items-center gap-2">
                         {isToday && (
                           <span className="bg-primary text-on-primary text-label-sm font-label-sm px-2 py-0.5 rounded-full font-bold">
                             {bn ? 'আজ / Today' : 'Today'}
                           </span>
                         )}
-                        <span className="text-label-md font-label-md text-on-surface font-bold">{fmtDayTitle(day, lang)}</span>
+                        {isYesterday && (
+                          <span className="bg-surface-container text-on-surface-variant text-label-sm font-label-sm px-2 py-0.5 rounded-full font-bold">
+                            {bn ? 'গতকাল / Yesterday' : 'Yesterday'}
+                          </span>
+                        )}
+                        <span className={`text-label-md font-label-md text-on-surface ${open ? 'font-bold' : 'font-semibold'}`}>{fmtDayTitle(day, lang)}</span>
+                        {!isToday && !isYesterday && (
+                          <span className="text-bilingual-sub text-on-surface-variant">{fmtWeekday(day, lang)}</span>
+                        )}
                       </div>
-                      <p className="text-bilingual-sub font-bilingual-sub text-on-surface font-medium flex items-center gap-1.5 flex-wrap">
+                      <p className={`text-bilingual-sub font-bilingual-sub font-medium flex items-center gap-1.5 flex-wrap ${open ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                        <span>{relShort}</span> •
                         <span className="text-primary font-bold">{bn ? 'সম্পন্ন' : 'Done'} {toBnDigits(done.length, lang)}</span> •
-                        <span className="text-error font-semibold">{bn ? 'ব্যর্থ' : 'Failed'} {toBnDigits(failed.length, lang)}</span> •
-                        <span className="font-bold text-primary">{bn ? 'আয়' : 'Earned'} {fmtTk(earned, lang)}</span>
+                        <span className={failed.length > 0 ? 'text-error font-semibold' : ''}>{bn ? 'ব্যর্থ' : 'Failed'} {toBnDigits(failed.length, lang)}</span> •
+                        <span className={open ? 'font-bold text-primary' : 'font-bold text-on-surface'}>{bn ? 'আয়' : 'Earned'} {fmtTk(earned, lang)}</span>
                       </p>
-                      <p className="text-[10px] text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[12px] text-secondary">pending_actions</span>
-                        {bn
-                          ? `মোট ${toBnDigits(orders.length, lang)}টি নির্ধারিত${active.length > 0 ? ` (${toBnDigits(active.length, lang)}টি ডেলিভারি চলমান)` : ''}`
-                          : `${orders.length} assigned${active.length > 0 ? ` (${active.length} in progress)` : ''}`}
-                      </p>
+                      {open && (
+                        <p className="text-[10px] text-on-surface-variant flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[12px] text-secondary">pending_actions</span>
+                          {bn
+                            ? `মোট ${toBnDigits(orders.length, lang)}টি নির্ধারিত${active.length > 0 ? ` (${toBnDigits(active.length, lang)}টি ডেলিভারি চলমান)` : ''}`
+                            : `${orders.length} assigned${active.length > 0 ? ` (${active.length} in progress)` : ''}`}
+                        </p>
+                      )}
                     </div>
-                    <span className={`w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0`}>
-                      <span className={`material-symbols-outlined text-primary text-[20px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>expand_more</span>
+                    <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${open ? 'bg-surface-container hover:bg-surface-container-high' : 'bg-surface-container-low hover:bg-surface-container'}`}>
+                      <span className={`material-symbols-outlined text-[20px] transition-transform duration-200 ${open ? 'text-primary rotate-180' : 'text-on-surface-variant'}`}>expand_more</span>
                     </span>
                   </button>
                   {open && (
-                    <div className="divide-y divide-outline-variant/20 px-3 py-1">
+                    <div className="divide-y divide-outline-variant/20 px-3 py-1 bg-surface-container-lowest">
                       {orders.map(o => {
                         const meta = STATUS_META[o.status];
+                        const isFailed = o.status === 'failed' || o.status === 'cancelled';
                         const chipClass = {
                           success: 'bg-primary-fixed/40 text-on-primary-fixed-variant border-primary/30',
                           warning: 'bg-secondary-fixed text-on-secondary-fixed border-secondary/30',
-                          error: 'bg-error-container/60 text-on-error-container border-error/30',
+                          error: 'bg-error-container text-on-error-container border-error/20',
                           primary: 'bg-primary/10 text-primary border-primary/30',
                           surface: 'bg-surface-container text-on-surface-variant border-outline-variant/40',
                         }[meta.variant];
+                        const chipLabel = o.status === 'delivered' ? (bn ? 'সম্পন্ন' : 'Done')
+                          : o.status === 'failed' ? (bn ? 'ব্যর্থ' : 'Failed')
+                            : o.status === 'cancelled' ? (bn ? 'বাতিল' : 'Cancelled')
+                              : (bn ? meta.labelBn : meta.labelEn);
                         const isRestaurant = o.items.some(i => i.source === 'restaurant');
+                        const category = isRestaurant
+                          ? (bn ? 'রেস্তোরাঁ পার্সেল' : 'restaurant parcel')
+                          : (bn ? 'মুদির অর্ডার' : 'grocery order');
                         return (
                           <button
                             key={o.id}
                             onClick={() => navigate(`/rider/orders/${o.id}`)}
-                            className="w-full py-2.5 flex items-center justify-between text-left"
+                            className={`w-full py-2.5 flex items-center justify-between text-left text-body-sm ${isFailed ? 'bg-error-container/10 -mx-3 px-3' : ''}`}
                           >
                             <div className="space-y-0.5 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-on-surface text-label-md">#{o.id}</span>
+                                <span className={`font-bold text-label-md ${isFailed ? 'line-through text-outline' : 'text-on-surface'}`}>#{o.id}</span>
                                 <span className="text-bilingual-sub text-on-surface-variant">• {fmtTime(o.createdAt, lang)}</span>
                               </div>
                               <p className="flex items-center gap-1 text-on-surface-variant text-body-sm truncate">
-                                <span className="material-symbols-outlined text-[14px] text-outline shrink-0">location_on</span>
-                                <span className="truncate">
-                                  {o.deliveryAddress} ({isRestaurant ? (bn ? 'খাবারের অর্ডার' : 'food order') : (bn ? 'মুদির অর্ডার' : 'grocery order')})
-                                </span>
+                                {isFailed && o.failReason ? (
+                                  <>
+                                    <span className="material-symbols-outlined text-[14px] text-error shrink-0">cancel</span>
+                                    <span className="truncate">{o.deliveryAddress} ({o.failReason})</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="material-symbols-outlined text-[14px] text-outline shrink-0">location_on</span>
+                                    <span className="truncate">{o.deliveryAddress} ({category})</span>
+                                  </>
+                                )}
                               </p>
                             </div>
                             <div className="flex items-center gap-2.5 text-right shrink-0">
                               <div>
-                                <span className="block font-bold text-on-surface text-label-md">{bn ? 'ফি' : 'Fee'} {fmtTk(o.deliveryFee, lang)}</span>
-                                <span className="text-[10px] text-on-surface-variant">{bn ? 'নগদ প্রদান' : 'Cash payment'}</span>
+                                <span className={`block font-bold text-label-md ${isFailed ? 'text-on-surface-variant' : 'text-on-surface'}`}>
+                                  {bn ? 'ফি' : 'Fee'} {fmtTk(isFailed ? 0 : o.deliveryFee, lang)}
+                                </span>
+                                <span className={`text-[10px] ${isFailed ? 'text-error' : 'text-on-surface-variant'}`}>
+                                  {isFailed ? (bn ? 'ব্যর্থ রিটার্ন' : 'Failed return') : (bn ? 'নগদ প্রদান' : 'Cash payment')}
+                                </span>
                               </div>
                               <span className={`inline-flex items-center gap-1 text-label-sm font-label-sm px-2 py-0.5 rounded-full font-bold border ${chipClass}`}>
                                 <span className="w-1.5 h-1.5 rounded-full bg-current inline-block" />
-                                {bn ? meta.labelBn : meta.labelEn}
+                                {chipLabel}
                               </span>
                             </div>
                           </button>
@@ -286,7 +364,35 @@ export default function RiderHistoryScreen() {
             })}
           </div>
         )}
+
+        {/* Verification footer (r2.2) */}
+        <footer className="pt-2 pb-6 mt-4">
+          <div className="bg-surface-container-low rounded-xl p-3 border border-outline-variant/30 flex items-start gap-2.5">
+            <span className="material-symbols-outlined text-primary text-[20px] mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>cloud_sync</span>
+            <div className="space-y-0.5">
+              <p className="text-label-md font-label-md font-semibold text-on-surface">
+                {bn ? 'লালমনিরহাট সদর হাব ডাটাবেসের সাথে রিয়েল-টাইম সমন্বিত' : 'Real-time synced with the Lalmonirhat Sadar Hub database'}
+              </p>
+              <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">
+                {bn
+                  ? 'Real-time sync with Lalmonirhat Sadar Hub • সর্বশেষ আপডেট: ৫ মিনিট আগে'
+                  : 'Real-time sync with Lalmonirhat Sadar Hub • Last updated: 5 minutes ago'}
+              </p>
+            </div>
+          </div>
+        </footer>
       </PageFrame>
+
+      {/* WhatsApp FAB (r2.2) */}
+      <a
+        href={OPERATOR.whatsappUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="WhatsApp"
+        className="fixed bottom-20 right-4 z-40 w-12 h-12 rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg active:scale-95 duration-150 ring-4 ring-white/80"
+      >
+        <span className="material-symbols-outlined text-[26px]" style={{ fontVariationSettings: "'FILL' 1" }}>chat</span>
+      </a>
     </div>
   );
 }

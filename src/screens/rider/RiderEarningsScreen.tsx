@@ -1,27 +1,62 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { PageFrame } from '../../components/layout/PageFrame';
 import { useCurrentRider } from '../../components/shared/RiderBits';
-import { fmtTk, toBnDigits, dayKey, latestOrderDay, uid, areaName } from '../../services/orderUtils';
+import { fmtTk, toBnDigits, dayKey, latestOrderDay, uid } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
-import type { PaymentRequest } from '../../types';
+import type { Order, PaymentRequest } from '../../types';
 
 const METHODS = [
   { id: 'bkash', labelBn: 'বিকাশ', labelEn: 'bKash', tile: 'bK', tileClass: 'bg-[#E2136E]', dotClass: 'bg-[#E2136E]' },
   { id: 'nagad', labelBn: 'নগদ', labelEn: 'Nagad', tile: 'নগদ', tileClass: 'bg-[#F7941D]', dotClass: 'bg-[#F7941D]' },
 ] as const;
 
+const BN_MONTHS = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+
+function fmtTime(iso: string, lang: 'bn' | 'en'): string {
+  const d = new Date(iso);
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return lang === 'bn'
+    ? `${toBnDigits(h, 'bn')}:${toBnDigits(String(m).padStart(2, '0'), 'bn')} ${ampm}`
+    : `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function dayShiftKey(anchor: string, daysBack: number): string {
+  const d = new Date(`${anchor}T00:00:00`);
+  d.setDate(d.getDate() - daysBack);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function fmtShortDay(day: string, lang: 'bn' | 'en'): string {
+  const d = new Date(`${day}T00:00:00`);
+  if (lang === 'en') return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return `${toBnDigits(d.getDate(), 'bn')} ${BN_MONTHS[d.getMonth()]}`;
+}
+
+function fmtFullDay(day: string, lang: 'bn' | 'en'): string {
+  const d = new Date(`${day}T00:00:00`);
+  if (lang === 'en') return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${toBnDigits(d.getDate(), 'bn')} ${BN_MONTHS[d.getMonth()]}, ${toBnDigits(d.getFullYear(), 'bn')}`;
+}
+
 /**
- * F7 Earnings + F8 payout, aligned to Stitch r2.3 (overview) and
- * r2.4 (withdrawal form + previous requests): identity strip,
- * pending-payout hero, request form, stats, recent earnings,
- * request history. A rider's earning per delivery = the order's
- * delivery fee. Periods anchor to the newest order day (demo
- * "today").
+ * F7 Earnings + F8 payout — strict Stitch replica: r2.3 (overview)
+ * sections in design order — identity strip, title, pending-payout
+ * hero, request CTA, 3-card stats grid, recent earnings stream,
+ * help card — followed by the r2.4 sections (withdrawal form +
+ * previous requests) merged into the same scroll. A rider's earning
+ * per delivery = the order's delivery fee. Periods anchor to the
+ * newest order day (demo "today").
  */
 export default function RiderEarningsScreen() {
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
   const lang = state.lang;
   const bn = lang === 'bn';
   const rider = useCurrentRider();
@@ -40,6 +75,7 @@ export default function RiderEarningsScreen() {
   );
 
   const anchor = latestOrderDay(state.orders);
+  const yesterday = dayShiftKey(anchor, 1);
   const anchorDate = new Date(`${anchor}T00:00:00`);
   const inLastDays = (iso: string, days: number) => {
     const d = new Date(`${dayKey(iso)}T00:00:00`);
@@ -50,16 +86,49 @@ export default function RiderEarningsScreen() {
   const sumFee = (list: typeof delivered) => list.reduce((s, o) => s + o.deliveryFee, 0);
   const todayList = delivered.filter(o => dayKey(o.createdAt) === anchor);
   const weekList = delivered.filter(o => inLastDays(o.createdAt, 7));
+  const todayFeeUniform = todayList.length > 0 && todayList.every(o => o.deliveryFee === todayList[0].deliveryFee);
 
   const periods = [
-    { labelBn: 'আজ / Today', labelEn: 'Today', value: sumFee(todayList), count: todayList.length, icon: null as string | null, dot: true },
-    { labelBn: 'এই সপ্তাহ', labelEn: 'This week', value: sumFee(weekList), count: weekList.length, icon: 'calendar_today', dot: false },
-    { labelBn: 'সর্বমোট', labelEn: 'All-time', value: sumFee(delivered), count: delivered.length, icon: 'savings', dot: false },
+    { kind: 'today' as const, labelBn: 'আজ / Today', labelEn: 'Today', value: sumFee(todayList), count: todayList.length, icon: null as string | null, iconClass: '', dot: true },
+    { kind: 'week' as const, labelBn: 'এই সপ্তাহ', labelEn: 'This week', value: sumFee(weekList), count: weekList.length, icon: 'calendar_today', iconClass: 'text-secondary', dot: false },
+    { kind: 'all' as const, labelBn: 'সর্বমোট', labelEn: 'All-time', value: sumFee(delivered), count: delivered.length, icon: 'savings', iconClass: 'text-tertiary', dot: false },
   ];
 
   const myRequests = state.paymentRequests.filter(r => r.riderId === rider?.id);
   const pendingPayout = rider?.pendingPayout ?? 0;
   const amountNum = parseInt(amount, 10);
+
+  /* Recent stream (r2.3): completed deliveries aggregated per day,
+     interleaved with paid-out requests (outbox rows), newest first. */
+  type StreamItem =
+    | { kind: 'earn'; key: string; day: string; count: number; total: number; latestIso: string }
+    | { kind: 'payout'; key: string; req: PaymentRequest; iso: string };
+  const streamItems = useMemo<StreamItem[]>(() => {
+    const byDay = new Map<string, Order[]>();
+    delivered.forEach(o => {
+      const k = dayKey(o.createdAt);
+      byDay.set(k, [...(byDay.get(k) ?? []), o]);
+    });
+    const earns: StreamItem[] = [...byDay.entries()].map(([day, list]) => ({
+      kind: 'earn',
+      key: `earn-${day}`,
+      day,
+      count: list.length,
+      total: list.reduce((s, o) => s + o.deliveryFee, 0),
+      latestIso: list[0].createdAt,
+    }));
+    const payouts: StreamItem[] = myRequests
+      .filter(r => r.status === 'paid')
+      .map(r => ({ kind: 'payout', key: `pay-${r.id}`, req: r, iso: r.paidAt ?? r.requestedAt }));
+    const sortKey = (it: StreamItem) => (it.kind === 'earn' ? it.latestIso : it.iso);
+    return [...earns, ...payouts].sort((a, b) => sortKey(b).localeCompare(sortKey(a))).slice(0, 5);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delivered, state.paymentRequests, rider?.id]);
+
+  const relLabel = (day: string) =>
+    day === anchor ? (bn ? 'আজ' : 'Today')
+      : day === yesterday ? (bn ? 'গতকাল' : 'Yesterday')
+        : fmtShortDay(day, lang);
 
   const submitRequest = () => {
     if (!rider || !amountNum || amountNum <= 0 || !account.trim()) return;
@@ -115,7 +184,7 @@ export default function RiderEarningsScreen() {
       </header>
 
       <PageFrame>
-        {/* Identity strip */}
+        {/* Identity strip (r2.3) */}
         <section className="flex items-center justify-between bg-surface-container-lowest rounded-xl p-3 border border-outline-variant/20 shadow-sm mt-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
@@ -147,7 +216,7 @@ export default function RiderEarningsScreen() {
           </div>
         </section>
 
-        {/* Title */}
+        {/* Title (r2.3) */}
         <div className="flex items-baseline justify-between pt-4">
           <div>
             <h1 className="text-headline-md font-headline-md text-on-surface tracking-tight">{bn ? 'আমার আয় ও পেমেন্ট' : 'My Earnings & Payout'}</h1>
@@ -166,7 +235,7 @@ export default function RiderEarningsScreen() {
           </div>
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-3">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/15 text-white text-label-md font-label-md">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/15 backdrop-blur text-white text-label-md font-label-md">
                 <span className="material-symbols-outlined text-sm mr-1.5 text-primary-fixed">hourglass_top</span>
                 {bn ? 'তোলার বাকি / Pending payout' : 'Pending payout'}
               </span>
@@ -194,7 +263,7 @@ export default function RiderEarningsScreen() {
         <section className="space-y-2 mt-4">
           <button
             onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="w-full min-h-[56px] rounded-full bg-primary text-white font-label-lg text-body-lg shadow-md flex items-center justify-center gap-2.5 px-6 active:scale-[0.98] transition-all"
+            className="w-full min-h-[56px] rounded-full bg-primary hover:bg-primary-container text-white font-label-lg text-body-lg shadow-md flex items-center justify-center gap-2.5 px-6 border border-primary-fixed/30 active:scale-[0.98] transition-all"
           >
             <span className="material-symbols-outlined text-xl">payments</span>
             <span className="font-bold">{bn ? 'পেমেন্ট রিকোয়েস্ট পাঠান / Request payment' : 'Request payment'}</span>
@@ -205,10 +274,143 @@ export default function RiderEarningsScreen() {
             <div className="text-[12px] leading-snug">
               <span className="font-semibold text-on-surface">{bn ? 'পেমেন্ট অ্যাডমিন নিজে বিকাশ/নগদে পাঠিয়ে দেবেন' : 'The admin sends payment personally by bKash/Nagad'}</span>
               <span className="text-outline text-[11px] block mt-0.5">
-                {bn ? 'সাধারণতঃ ১২ ঘণ্টার মধ্যে পরিশোধ করা হয় / Usually processed within 12 hours' : 'Usually processed within 12 hours'}
+                {bn
+                  ? 'The admin sends payment personally by bKash/Nagad (সাধারণতঃ ১২ ঘণ্টার মধ্যে পরিশোধ করা হয় / Usually processed within 12 hours)'
+                  : 'Usually processed within 12 hours'}
               </span>
             </div>
           </div>
+        </section>
+
+        {/* Stats (r2.3) */}
+        <section className="space-y-2 mt-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-label-lg font-label-lg text-on-surface font-bold">{bn ? 'আয়ের পরিসংখ্যান' : 'Earnings statistics'}</h3>
+            <span className="text-bilingual-sub font-bilingual-sub text-outline">Earnings Breakdown</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            {periods.map(p => (
+              <div key={p.kind} className="bg-surface-container-lowest rounded-xl p-3 border border-outline-variant/30 shadow-sm flex flex-col justify-between hover:border-primary transition-colors">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-label-sm font-label-sm text-outline">{bn ? p.labelBn : p.labelEn}</span>
+                  {p.dot
+                    ? <span className="w-2 h-2 rounded-full bg-primary" />
+                    : <span className={clsx('material-symbols-outlined text-[14px]', p.iconClass)}>{p.icon}</span>}
+                </div>
+                <div>
+                  <div className={clsx('text-headline-md font-headline-md font-bold', p.kind === 'today' ? 'text-primary' : 'text-on-surface')}>
+                    {fmtTk(p.value, lang)}
+                  </div>
+                  {p.kind === 'today' && (
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 leading-tight">
+                      {bn ? `${toBnDigits(p.count, lang)}টি ডেলিভারি` : `${p.count} deliveries`}
+                      {todayFeeUniform && (
+                        <>
+                          <br />
+                          <span className="text-outline text-[9px]">({toBnDigits(p.count, lang)} × {fmtTk(todayList[0].deliveryFee, lang)})</span>
+                        </>
+                      )}
+                    </p>
+                  )}
+                  {p.kind === 'week' && (
+                    <p className="text-[10px] text-outline font-medium mt-1 leading-tight">
+                      This week
+                      <br />
+                      <span className="text-primary font-bold text-[9px]">{bn ? `${toBnDigits(p.count, lang)}টি ট্রিপ` : `${p.count} trips`}</span>
+                    </p>
+                  )}
+                  {p.kind === 'all' && (
+                    <p className="text-[10px] text-outline font-medium mt-1 leading-tight">
+                      All-time
+                      <br />
+                      <span className="text-on-surface-variant text-[9px]">{bn ? `${toBnDigits(p.count, lang)}টি সফল ট্রিপ` : `${p.count} successful trips`}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Recent earnings stream (r2.3) */}
+        <section className="space-y-2.5 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-label-lg font-label-lg text-on-surface font-bold">{bn ? 'সর্বশেষ লেনদেন' : 'Recent transactions'}</h3>
+              <p className="text-bilingual-sub font-bilingual-sub text-outline">Recent Earnings Stream</p>
+            </div>
+            <button
+              onClick={() => navigate('/rider/history')}
+              className="text-primary hover:text-primary-container text-label-md font-label-md flex items-center"
+            >
+              <span>{bn ? 'সব দেখুন' : 'View all'}</span>
+              <span className="material-symbols-outlined text-sm ml-0.5">chevron_right</span>
+            </button>
+          </div>
+          {streamItems.length === 0 ? (
+            <p className="text-body-md text-on-surface-variant py-4 text-center">
+              {bn ? 'এখনো কোনো সম্পন্ন ডেলিভারি নেই।' : 'No completed deliveries yet.'}
+            </p>
+          ) : (
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm divide-y divide-outline-variant/20 overflow-hidden">
+              {streamItems.map(it => {
+                if (it.kind === 'earn') {
+                  const rel = relLabel(it.day);
+                  return (
+                    <div key={it.key} className="p-3.5 flex items-center justify-between hover:bg-surface-container-low transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-xl">check_circle</span>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-label-md font-label-md text-on-surface font-bold truncate">
+                            {bn ? `${rel} সম্পন্ন ${toBnDigits(it.count, lang)}টি ডেলিভারি` : `${rel} — ${it.count} deliveries completed`}
+                          </h4>
+                          <div className="flex items-center gap-1 text-bilingual-sub font-bilingual-sub text-outline">
+                            <span>{bn ? `${rel} ${it.count} Deliveries` : `${rel} • ${it.count} deliveries`}</span>
+                            <span>•</span>
+                            <span className="text-primary font-semibold">{bn ? 'জমা হয়েছে' : 'Credited'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-label-lg font-label-lg font-bold text-primary">+{fmtTk(it.total, lang)}</span>
+                        <span className="block text-[10px] text-outline">{rel}, {fmtTime(it.latestIso, lang)}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                const meta = METHODS.find(m => m.id === it.req.method) ?? METHODS[0];
+                const paidDay = dayKey(it.iso);
+                return (
+                  <div key={it.key} className="p-3.5 flex items-center justify-between hover:bg-surface-container-low transition-colors bg-surface-container-lowest">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-xl">outbox</span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1">
+                          <h4 className="text-label-md font-label-md text-on-surface font-bold truncate">
+                            {bn ? `${fmtShortDay(paidDay, lang)} পেমেন্ট উত্তোলন` : `${fmtShortDay(paidDay, lang)} payment withdrawal`}
+                          </h4>
+                          <span className="text-[10px] bg-secondary-fixed/50 text-on-secondary-fixed px-1.5 py-[1px] rounded font-bold shrink-0">{meta.labelEn}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-bilingual-sub font-bilingual-sub text-outline">
+                          <span>{bn ? `${meta.labelBn}ে পরিশোধিত` : `Paid via ${meta.labelEn}`}</span>
+                          <span>•</span>
+                          <span className="font-mono text-[10px]">ID: {it.req.id}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-label-lg font-label-lg font-bold text-error">-{fmtTk(it.req.amount, lang)}</span>
+                      <span className="block text-[10px] text-outline">{fmtShortDay(paidDay, lang)}, {fmtTime(it.iso, lang)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* Withdrawal form (r2.4) */}
@@ -243,7 +445,7 @@ export default function RiderEarningsScreen() {
                 className="absolute right-2 px-2.5 py-1.5 bg-primary-container/10 text-primary border border-primary/20 rounded-lg font-label-md text-label-md font-bold flex items-center gap-1"
               >
                 <span>{bn ? 'পুরো টাকা তুলুন' : 'Withdraw all'}</span>
-                <span className="font-bilingual-sub text-[10px] opacity-80">(All: ৳{pendingPayout})</span>
+                <span className="font-bilingual-sub text-[10px] opacity-80">(All: {fmtTk(pendingPayout, lang)})</span>
               </button>
             </div>
             <p className="flex items-center gap-1.5 text-on-surface-variant font-bilingual-sub text-bilingual-sub pt-0.5">
@@ -340,75 +542,8 @@ export default function RiderEarningsScreen() {
           </div>
         </section>
 
-        {/* Stats (r2.3) */}
-        <section className="space-y-2 pt-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-label-lg font-label-lg text-on-surface font-bold">{bn ? 'আয়ের পরিসংখ্যান' : 'Earnings statistics'}</h3>
-            <span className="text-bilingual-sub font-bilingual-sub text-outline">Earnings Breakdown</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2.5">
-            {periods.map((p, i) => (
-              <div key={i} className="bg-surface-container-lowest rounded-xl p-3 border border-outline-variant/30 shadow-sm flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-label-sm font-label-sm text-outline">{bn ? p.labelBn : p.labelEn}</span>
-                  {p.dot
-                    ? <span className="w-2 h-2 rounded-full bg-primary" />
-                    : <span className="material-symbols-outlined text-[14px] text-secondary">{p.icon}</span>}
-                </div>
-                <div className={clsx('text-headline-md font-headline-md font-bold', i === 0 ? 'text-primary' : 'text-on-surface')}>
-                  {fmtTk(p.value, lang)}
-                </div>
-                <p className="text-[10px] text-on-surface-variant font-medium mt-1 leading-tight">
-                  {bn ? `${toBnDigits(p.count, lang)}টি ডেলিভারি` : `${p.count} deliveries`}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Recent earnings stream (r2.3) */}
-        <section className="space-y-2.5 pt-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-label-lg font-label-lg text-on-surface font-bold">{bn ? 'সর্বশেষ লেনদেন' : 'Recent transactions'}</h3>
-              <p className="text-bilingual-sub font-bilingual-sub text-outline">Recent Earnings Stream</p>
-            </div>
-          </div>
-          {delivered.length === 0 ? (
-            <p className="text-body-md text-on-surface-variant py-4 text-center">
-              {bn ? 'এখনো কোনো সম্পন্ন ডেলিভারি নেই।' : 'No completed deliveries yet.'}
-            </p>
-          ) : (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm divide-y divide-outline-variant/20 overflow-hidden">
-              {delivered.slice(0, 8).map(o => (
-                <div key={o.id} className="p-3.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                      <span className="material-symbols-outlined text-xl">check_circle</span>
-                    </span>
-                    <div className="min-w-0">
-                      <h4 className="text-label-md font-label-md text-on-surface font-bold truncate">#{o.id} • {o.customerName}</h4>
-                      <p className="flex items-center gap-1 text-bilingual-sub font-bilingual-sub text-outline">
-                        <span>{areaName(state.areas, o.deliveryAreaId, lang)}</span>
-                        <span>•</span>
-                        <span className="text-primary font-semibold">{bn ? 'জমা হয়েছে' : 'Credited'}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="text-label-lg font-label-lg font-bold text-primary">+{fmtTk(o.deliveryFee, lang)}</span>
-                    <span className="block text-[10px] text-outline">
-                      {new Date(o.createdAt).toLocaleDateString(bn ? 'bn-BD' : 'en-BD', { day: 'numeric', month: 'short' })}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
         {/* Previous requests (r2.4) */}
-        <section className="space-y-3 pt-5">
+        <section className="space-y-3 mt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-[20px]">history</span>
@@ -426,6 +561,7 @@ export default function RiderEarningsScreen() {
             <div className="space-y-2.5">
               {myRequests.map(r => {
                 const meta = METHODS.find(m => m.id === r.method) ?? METHODS[0];
+                const reqDay = dayKey(r.requestedAt);
                 return (
                   <div
                     key={r.id}
@@ -437,15 +573,27 @@ export default function RiderEarningsScreen() {
                     {r.status === 'pending' && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-secondary-container" />}
                     <div className="flex items-start justify-between gap-2 mb-2 pl-1">
                       <div>
-                        <span className="font-bilingual-sub text-[11px] font-semibold text-on-surface-variant">
-                          {new Date(r.requestedAt).toLocaleDateString(bn ? 'bn-BD' : 'en-BD', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </span>
-                        <div className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight mt-0.5">
+                        {r.status === 'pending' ? (
+                          <span className="font-bilingual-sub text-[11px] font-semibold text-secondary flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">schedule</span>
+                            {bn
+                              ? `${relLabel(reqDay)}, ${fmtShortDay(reqDay, lang)} ${fmtTime(r.requestedAt, lang)}`
+                              : `${relLabel(reqDay)}, ${fmtShortDay(reqDay, lang)} ${fmtTime(r.requestedAt, lang)}`}
+                          </span>
+                        ) : (
+                          <span className="font-bilingual-sub text-[11px] font-semibold text-on-surface-variant">
+                            {fmtFullDay(reqDay, lang)}
+                          </span>
+                        )}
+                        <div className={clsx(
+                          'font-bold text-on-surface tracking-tight mt-0.5',
+                          r.status === 'pending' ? 'font-headline-md text-headline-md' : 'text-[20px]',
+                        )}>
                           {fmtTk(r.amount, lang)}
                         </div>
                       </div>
                       {r.status === 'pending' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm font-bold border border-secondary-container/30">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm font-bold border border-secondary-container/30 animate-pulse">
                           <span className="material-symbols-outlined text-[13px]">pending</span>
                           {bn ? 'অপেক্ষমাণ / Pending' : 'Pending'}
                         </span>
@@ -463,18 +611,27 @@ export default function RiderEarningsScreen() {
                         </span>
                       )}
                     </div>
-                    <div className="pl-1 pt-2 border-t border-outline-variant/20 flex items-center justify-between text-on-surface-variant font-bilingual-sub text-bilingual-sub">
-                      <span className="flex items-center gap-1 font-medium text-on-surface">
-                        <span className={clsx('w-2 h-2 rounded-full', meta.dotClass)} />
-                        {bn ? meta.labelBn : meta.labelEn} • {r.accountNumber}
-                      </span>
-                      <span className={r.status === 'pending' ? 'text-secondary font-semibold' : 'text-primary font-semibold'}>
-                        {r.status === 'pending'
-                          ? (bn ? 'অ্যাডমিন অনুমোদনের অপেক্ষায়' : 'Awaiting admin approval')
-                          : r.status === 'paid'
-                            ? (bn ? 'সফল' : 'Successful')
-                            : (bn ? 'বাতিল হয়েছে' : 'Rejected')}
-                      </span>
+                    <div className="pl-1 pt-2 border-t border-outline-variant/20 flex flex-col gap-1 text-on-surface-variant font-bilingual-sub text-bilingual-sub">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 font-medium text-on-surface">
+                          <span className={clsx('w-2 h-2 rounded-full', meta.dotClass)} />
+                          {bn ? meta.labelBn : meta.labelEn} • {r.accountNumber}
+                        </span>
+                        <span className={r.status === 'pending' ? 'text-secondary font-semibold' : 'text-primary font-semibold'}>
+                          {r.status === 'pending'
+                            ? (bn ? 'অ্যাডমিন অনুমোদনের অপেক্ষায়' : 'Awaiting admin approval')
+                            : r.status === 'paid'
+                              ? (bn ? 'সফল' : 'Successful')
+                              : (bn ? 'বাতিল হয়েছে' : 'Rejected')}
+                        </span>
+                      </div>
+                      {r.status === 'paid' && r.paidAt && (
+                        <div className="text-[10px] text-on-surface-variant/80 pt-0.5">
+                          {bn
+                            ? `পরিশোধিত: ${fmtShortDay(dayKey(r.paidAt), lang)} ${fmtTime(r.paidAt, lang)}`
+                            : `Paid: ${fmtShortDay(dayKey(r.paidAt), lang)} ${fmtTime(r.paidAt, lang)}`}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -496,7 +653,7 @@ export default function RiderEarningsScreen() {
           </div>
           <a
             href={OPERATOR.phoneTel}
-            className="px-3 py-1.5 rounded-full bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-label-md font-bold text-xs shrink-0"
+            className="px-3 py-1.5 rounded-full bg-surface-container-lowest border border-outline-variant/40 text-on-surface text-label-md font-bold text-xs shrink-0 hover:bg-surface-container transition-colors"
           >
             {bn ? 'কল দিন' : 'Call'}
           </a>
@@ -509,9 +666,14 @@ export default function RiderEarningsScreen() {
         target="_blank"
         rel="noreferrer"
         aria-label="WhatsApp"
-        className="fixed bottom-20 right-4 z-40 w-[52px] h-[52px] rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+        style={{ boxShadow: '0 6px 16px rgba(37, 211, 102, 0.40)' }}
+        className="fixed bottom-20 right-4 z-40 w-[52px] h-[52px] rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform hover:opacity-95"
       >
         <span className="material-symbols-outlined text-3xl">chat</span>
+        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#25D366] opacity-75" />
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-[#1D9D57]" />
+        </span>
       </a>
     </div>
   );

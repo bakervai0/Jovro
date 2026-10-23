@@ -30,11 +30,15 @@ function fmtTimeBn(iso: string, lang: string): string {
 }
 
 /**
- * F4 Rider home + F5 Today's deliveries — composition follows
- * designs r1.4 (portal header, on-duty card, আজকের কাজ 2×2 stats,
- * পরবর্তী ডেলিভারি featured card, helpline card) and r2.1
- * (grouped lists: চলতি কাজ / সম্পন্ন হয়েছে / বাতিল ও ব্যর্থ
- * with design order cards). All data/logic unchanged.
+ * F4 Rider home + F5 Today's deliveries — strict replica of designs
+ * r1.4 (portal header with GPS + battery telemetry, on-duty card,
+ * আজকের কাজ 2×2 stats, পরবর্তী ডেলিভারি featured card, helpline
+ * card) and r2.1 (grouped lists: চলতি কাজ in-progress cards,
+ * পরবর্তী ডেলিভারি upcoming-assigned cards, সম্পন্ন হয়েছে compact
+ * cards, বাতিল ও ব্যর্থ failed cards with reason box). r2.1's own
+ * page header + summary strip are not duplicated here — r1.4's
+ * header + 2×2 stats fill that role on this merged screen.
+ * All data/logic unchanged.
  */
 export default function RiderHomeScreen() {
   const { state, unreadCount } = useApp();
@@ -54,28 +58,38 @@ export default function RiderHomeScreen() {
   const failedToday = todays.filter(o => o.status === 'failed' || o.status === 'cancelled');
   const earningsToday = deliveredToday.reduce((s, o) => s + o.deliveryFee, 0);
   const nextOrder = active[0];
-  const inHand = active.slice(1);
+  const restActive = active.slice(1);
+  const inProgress = restActive.filter(o => o.status === 'buying' || o.status === 'on-the-way');
+  const upcoming = restActive.filter(o => o.status === 'pending' || o.status === 'confirmed');
   const todayKey = latestOrderDay(myOrders);
 
   const firstName = (bn ? rider?.nameBn : rider?.name)?.split(' ')[0] ?? '';
   const riderArea = rider?.areaId ? areaName(state.areas, rider.areaId, lang) : bn ? 'লালমনিরহাট সদর' : 'Lalmonirhat Sadar';
 
-  const stats: { label: string; sub: string; value: string; icon: string; tone: string; box: string }[] = [
+  // Stat card tones copy design r1.4 card-by-card.
+  const stats: {
+    label: string; sub: string; value: string; icon: string;
+    box: string; headTone: string; iconTone: string; valueTone: string; subTone: string; bold: boolean;
+  }[] = [
     {
       label: 'নিয়োগ পেয়েছেন', sub: 'Assigned', value: toBnDigits(todays.length, lang), icon: 'assignment',
-      tone: 'text-on-surface', box: 'border-outline-variant/40',
+      box: 'border-outline-variant/40', headTone: 'text-on-surface-variant', iconTone: 'text-primary',
+      valueTone: 'text-on-surface', subTone: 'text-on-surface-variant', bold: false,
     },
     {
       label: 'সম্পন্ন', sub: 'Done', value: toBnDigits(deliveredToday.length, lang), icon: 'check_circle',
-      tone: 'text-primary', box: 'border-primary/40 bg-primary/[0.02]',
+      box: 'border-primary/40 bg-primary/[0.02]', headTone: 'text-primary', iconTone: 'text-primary',
+      valueTone: 'text-primary', subTone: 'text-primary/80', bold: true,
     },
     {
       label: 'ব্যর্থ', sub: 'Failed', value: toBnDigits(failedToday.length, lang), icon: 'cancel',
-      tone: 'text-on-surface-variant', box: 'border-outline-variant/40',
+      box: 'border-outline-variant/40', headTone: 'text-outline', iconTone: 'text-outline',
+      valueTone: 'text-on-surface-variant', subTone: 'text-outline', bold: false,
     },
     {
       label: 'আজকের আয়', sub: 'Earned', value: fmtTk(earningsToday, lang), icon: 'payments',
-      tone: 'text-secondary', box: 'border-2 border-secondary-container/50 bg-secondary-fixed/10',
+      box: 'border-2 border-secondary-container/50 bg-secondary-fixed/10', headTone: 'text-secondary', iconTone: 'text-secondary',
+      valueTone: 'text-secondary', subTone: 'text-secondary', bold: true,
     },
   ];
 
@@ -87,6 +101,58 @@ export default function RiderHomeScreen() {
     return bn ? 'পিকআপ: গোশালা বাজার কাঁচাবাজার' : 'Pickup: Goshala Bazar';
   };
 
+  const isRestaurantOrder = (o: Order): boolean => o.items.some(i => i.source === 'restaurant');
+
+  /** Second grid cell of the r2.1 job cards — source-aware per design. */
+  const itemsCell = (o: Order) => {
+    const rest = isRestaurantOrder(o);
+    return (
+      <div className="bg-surface-container-low rounded-lg p-2 flex items-center gap-2">
+        <span className="material-symbols-outlined text-on-surface-variant text-[18px]">{rest ? 'restaurant' : 'shopping_basket'}</span>
+        <div>
+          <span className="block text-bilingual-sub text-outline">{rest ? (bn ? 'পণ্য (Restaurant)' : 'Items (Restaurant)') : (bn ? 'আইটেম বিবরণ' : 'Item details')}</span>
+          <span className="text-label-md text-on-surface">
+            {toBnDigits(o.items.length, lang)}{bn ? 'টি আইটেম' : ' items'}{rest ? (bn ? ' (খাবার)' : ' (food)') : ''}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const windowCell = (o: Order, withWindowWord: boolean) => (
+    <div className="bg-surface-container-low rounded-lg p-2 flex items-center gap-2">
+      <span className="material-symbols-outlined text-on-surface-variant text-[18px]">schedule</span>
+      <div>
+        <span className="block text-bilingual-sub text-outline">{bn ? `বিতরণ সময়${withWindowWord ? ' (Window)' : ''}` : 'Delivery window'}</span>
+        <span className="text-label-md text-on-surface">{bn ? SLOT_META[o.timeSlot].rangeBn : SLOT_META[o.timeSlot].rangeEn}</span>
+      </div>
+    </div>
+  );
+
+  const cardHeader = (o: Order, badge: React.ReactNode) => (
+    <div className="flex items-start justify-between gap-2 border-b border-outline-variant/30 pb-2.5">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-label-lg font-bold text-on-surface">#{o.id}</span>
+          <span className="text-bilingual-sub text-outline">·</span>
+          <span className="text-label-md text-on-surface-variant font-medium">গ্রাহক: {o.customerName}</span>
+        </div>
+        <p className="text-bilingual-sub text-outline">{bn ? 'Customer' : 'গ্রাহক'}: {o.customerName}</p>
+      </div>
+      {badge}
+    </div>
+  );
+
+  const locationBlock = (o: Order, iconTone: string) => (
+    <div className="flex items-start gap-2">
+      <span className={clsx('material-symbols-outlined mt-0.5 text-[20px]', iconTone)}>location_on</span>
+      <div>
+        <p className="text-body-md text-on-surface font-semibold">{o.deliveryAddress}</p>
+        <p className="text-bilingual-sub text-outline">{areaName(state.areas, o.deliveryAreaId, bn ? 'en' : 'bn')}</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
       {/* Header — design r1.4 */}
@@ -96,9 +162,15 @@ export default function RiderHomeScreen() {
             <span className="text-headline-sm tracking-tight text-primary">Jovro</span>
             <span className="bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded-full border border-primary/20">রাইডার</span>
           </div>
-          <div className="flex items-center gap-1 text-primary">
-            <span className="material-symbols-outlined text-[16px]">gps_fixed</span>
-            <span className="text-[11px] font-bold">GPS সচল</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 text-primary">
+              <span className="material-symbols-outlined text-[16px]">gps_fixed</span>
+              <span className="text-[11px] font-bold">GPS সচল</span>
+            </div>
+            <div className="flex items-center gap-1 text-on-surface">
+              <span className="material-symbols-outlined text-[16px]">battery_full</span>
+              <span className="text-[11px] font-bold">{toBnDigits('92%', lang)}</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center justify-between pt-1">
@@ -185,13 +257,13 @@ export default function RiderHomeScreen() {
             <div className="grid grid-cols-2 gap-3">
               {stats.map(s => (
                 <div key={s.label} className={clsx('bg-surface-container-lowest p-3 rounded-xl border shadow-sm flex flex-col justify-between', s.box)}>
-                  <div className={clsx('flex items-center justify-between mb-2', s.tone)}>
-                    <span className="text-label-md font-bold">{s.label}</span>
-                    <span className="material-symbols-outlined text-[22px]">{s.icon}</span>
+                  <div className={clsx('flex items-center justify-between mb-2', s.headTone)}>
+                    <span className={clsx('text-label-md', s.bold && 'font-bold')}>{s.label}</span>
+                    <span className={clsx('material-symbols-outlined text-[22px]', s.iconTone)}>{s.icon}</span>
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <span className={clsx('text-headline-lg font-bold', s.tone)}>{s.value}</span>
-                    <span className={clsx('text-bilingual-sub', s.tone)}>{s.sub}</span>
+                    <span className={clsx('text-headline-lg font-bold', s.valueTone)}>{s.value}</span>
+                    <span className={clsx('text-bilingual-sub', s.subTone)}>{s.sub}</span>
                   </div>
                 </div>
               ))}
@@ -277,8 +349,8 @@ export default function RiderHomeScreen() {
                 </section>
               )}
 
-              {/* In hand — design r2.1 */}
-              {inHand.length > 0 && (
+              {/* In hand — design r2.1 in-progress cards */}
+              {inProgress.length > 0 && (
                 <section className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between pt-1">
                     <h2 className="text-label-md text-on-surface uppercase tracking-wider flex items-center gap-1.5 font-semibold">
@@ -286,82 +358,91 @@ export default function RiderHomeScreen() {
                       চলতি কাজ (In Hand)
                     </h2>
                     <span className="text-bilingual-sub text-secondary-container font-semibold">
-                      {toBnDigits(inHand.length, lang)}টি সক্রিয়
+                      {toBnDigits(inProgress.length, lang)}টি সক্রিয়
                     </span>
                   </div>
-                  {inHand.map(o => {
-                    const inProgress = o.status === 'buying' || o.status === 'on-the-way';
-                    return (
-                      <article
-                        key={o.id}
-                        className={clsx(
-                          'bg-surface-container-lowest rounded-2xl p-3.5 shadow-sm',
-                          inProgress ? 'border-2 border-secondary-container shadow-md' : 'border border-outline-variant/50',
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2 border-b border-outline-variant/30 pb-2.5">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-label-lg font-bold text-on-surface">#{o.id}</span>
-                              <span className="text-bilingual-sub text-outline">·</span>
-                              <span className="text-label-md text-on-surface-variant font-medium">গ্রাহক: {o.customerName}</span>
-                            </div>
-                            <p className="text-bilingual-sub text-outline">{areaName(state.areas, o.deliveryAreaId, lang)}</p>
-                          </div>
-                          <span className={clsx(
-                            'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-label-sm font-semibold shrink-0',
-                            inProgress ? 'bg-secondary-container text-on-primary' : 'bg-surface-container-highest text-on-surface border border-outline-variant/40',
-                          )}>
-                            <span className={clsx('w-1.5 h-1.5 rounded-full', inProgress ? 'bg-white animate-ping' : 'bg-tertiary')} />
-                            {inProgress ? 'কাজ চলছে / In progress' : 'নিয়োগ পেয়েছেন / Assigned'}
-                          </span>
+                  {inProgress.map(o => (
+                    <article
+                      key={o.id}
+                      className="bg-surface-container-lowest rounded-2xl p-3.5 border-2 border-secondary-container shadow-md relative overflow-hidden"
+                    >
+                      <div className="absolute -right-8 -top-8 w-20 h-20 bg-secondary-fixed/40 rounded-full blur-xl pointer-events-none" />
+                      {cardHeader(o, (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container text-on-primary text-label-sm font-semibold shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                          কাজ চলছে / In progress
+                        </span>
+                      ))}
+                      <div className="py-2.5 flex flex-col gap-2">
+                        {locationBlock(o, 'text-secondary-container')}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {windowCell(o, true)}
+                          {itemsCell(o)}
                         </div>
-                        <div className="py-2.5 flex flex-col gap-2">
-                          <div className="flex items-start gap-2">
-                            <span className={clsx('material-symbols-outlined mt-0.5 text-[20px]', inProgress ? 'text-secondary-container' : 'text-outline')}>location_on</span>
-                            <div>
-                              <p className="text-body-md text-on-surface font-semibold">{o.deliveryAddress}</p>
-                              <p className="text-bilingual-sub text-outline">{areaName(state.areas, o.deliveryAreaId, lang)}</p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 pt-1">
-                            <div className="bg-surface-container-low rounded-lg p-2 flex items-center gap-2">
-                              <span className="material-symbols-outlined text-on-surface-variant text-[18px]">schedule</span>
-                              <div>
-                                <span className="block text-bilingual-sub text-outline">বিতরণ সময় (Window)</span>
-                                <span className="text-label-md text-on-surface">{bn ? SLOT_META[o.timeSlot].rangeBn : SLOT_META[o.timeSlot].rangeEn}</span>
-                              </div>
-                            </div>
-                            <div className="bg-surface-container-low rounded-lg p-2 flex items-center gap-2">
-                              <span className="material-symbols-outlined text-on-surface-variant text-[18px]">shopping_basket</span>
-                              <div>
-                                <span className="block text-bilingual-sub text-outline">আইটেম বিবরণ</span>
-                                <span className="text-label-md text-on-surface">{toBnDigits(o.items.length, lang)}টি আইটেম</span>
-                              </div>
-                            </div>
-                          </div>
+                      </div>
+                      <div className="mt-1 pt-2.5 border-t border-outline-variant/30 flex items-center justify-between">
+                        <div>
+                          <span className="text-bilingual-sub text-outline">উপার্জন / Pay</span>
+                          <div className="text-label-lg text-primary font-bold">ডেলিভারি ফি {fmtTk(o.deliveryFee, lang)}</div>
                         </div>
-                        <div className="mt-1 pt-2.5 border-t border-outline-variant/30 flex items-center justify-between">
-                          <div>
-                            <span className="text-bilingual-sub text-outline">উপার্জন / Pay</span>
-                            <div className="text-label-lg text-primary font-bold">ডেলিভারি ফি {fmtTk(o.deliveryFee, lang)}</div>
-                          </div>
-                          <button
-                            onClick={() => navigate(`/rider/orders/${o.id}`)}
-                            className={clsx(
-                              'inline-flex items-center gap-1.5 px-4 h-10 rounded-full font-label-md font-bold shadow-sm active:scale-95 transition-transform',
-                              inProgress
-                                ? 'bg-secondary-container text-white'
-                                : 'border border-primary text-primary bg-transparent shadow-none',
-                            )}
-                          >
-                            <span>{inProgress ? 'কাজে যান / Continue' : 'বিস্তারিত / Details'}</span>
-                            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                          </button>
+                        <button
+                          onClick={() => navigate(`/rider/orders/${o.id}`)}
+                          className="inline-flex items-center gap-1.5 px-4 h-10 rounded-full bg-secondary-container text-white font-label-md font-bold shadow-sm active:scale-95 transition-transform"
+                        >
+                          <span>কাজে যান / Continue</span>
+                          <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              )}
+
+              {/* Upcoming assigned — design r2.1 assigned cards */}
+              {upcoming.length > 0 && (
+                <section className="flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between pt-2">
+                    <h2 className="text-label-md text-on-surface uppercase tracking-wider flex items-center gap-1.5 font-semibold">
+                      <span className="material-symbols-outlined text-[16px] text-tertiary">assignment</span>
+                      পরবর্তী ডেলিভারি (Upcoming Assigned)
+                    </h2>
+                    <span className="text-bilingual-sub text-outline font-medium">
+                      {toBnDigits(upcoming.length, lang)}টি বাকি
+                    </span>
+                  </div>
+                  {upcoming.map(o => (
+                    <article
+                      key={o.id}
+                      className="bg-surface-container-lowest rounded-2xl p-3.5 border border-outline-variant/50 shadow-sm"
+                    >
+                      {cardHeader(o, (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container-highest text-on-surface border border-outline-variant/40 text-label-sm font-semibold shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-tertiary" />
+                          নিয়োগ পেয়েছেন / Assigned
+                        </span>
+                      ))}
+                      <div className="py-2.5 flex flex-col gap-2">
+                        {locationBlock(o, 'text-outline')}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {windowCell(o, false)}
+                          {itemsCell(o)}
                         </div>
-                      </article>
-                    );
-                  })}
+                      </div>
+                      <div className="mt-1 pt-2.5 border-t border-outline-variant/30 flex items-center justify-between">
+                        <div>
+                          <span className="text-bilingual-sub text-outline">ফি / Payout</span>
+                          <div className="text-label-lg text-primary font-bold">ডেলিভারি ফি {fmtTk(o.deliveryFee, lang)}</div>
+                        </div>
+                        <button
+                          onClick={() => navigate(`/rider/orders/${o.id}`)}
+                          className="inline-flex items-center gap-1 px-3.5 h-9 rounded-full border border-primary text-primary font-label-md font-semibold active:scale-95 transition-transform"
+                        >
+                          <span>ম্যাপ দেখুন / Map</span>
+                          <span className="material-symbols-outlined text-[16px]">directions</span>
+                        </button>
+                      </div>
+                    </article>
+                  ))}
                 </section>
               )}
 
@@ -410,7 +491,7 @@ export default function RiderHomeScreen() {
                 </section>
               )}
 
-              {/* Failed / cancelled — design r2.1 */}
+              {/* Failed / cancelled — design r2.1 failed cards */}
               {failedToday.length > 0 && (
                 <section className="flex flex-col gap-2.5">
                   <div className="flex items-center justify-between pt-2">
@@ -422,30 +503,46 @@ export default function RiderHomeScreen() {
                       {toBnDigits(failedToday.length, lang)}টি ব্যর্থ ডেলিভারি
                     </span>
                   </div>
-                  {failedToday.map(o => (
-                    <button
-                      key={o.id}
-                      onClick={() => navigate(`/rider/orders/${o.id}`)}
-                      className="bg-error-container/10 rounded-2xl p-3.5 border border-error/20 flex flex-col gap-2 text-left w-full"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-label-md font-bold text-on-surface">#{o.id}</span>
-                          <span className="text-outline">·</span>
-                          <span className="text-body-md text-on-surface">{o.customerName}</span>
+                  {failedToday.map(o => {
+                    const isFailed = o.status === 'failed';
+                    return (
+                      <article
+                        key={o.id}
+                        onClick={() => navigate(`/rider/orders/${o.id}`)}
+                        className="bg-surface-container-lowest bg-error-container/10 rounded-2xl p-3.5 border border-error/20 flex flex-col gap-2 cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-label-md font-bold text-on-surface">#{o.id}</span>
+                              <span className="text-outline">·</span>
+                              <span className="text-body-md text-on-surface">{o.customerName}</span>
+                            </div>
+                            <p className="text-bilingual-sub text-outline">
+                              {o.customerName} · {areaName(state.areas, o.deliveryAreaId, bn ? 'en' : 'bn')}
+                            </p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-error-container text-on-error-container text-label-sm font-bold shrink-0">
+                            <span className="material-symbols-outlined text-[14px]">close</span>
+                            {isFailed ? 'ব্যর্থ / Failed' : 'বাতিল / Cancelled'}
+                          </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error/10 text-error text-label-sm font-semibold">
-                          <span className="material-symbols-outlined text-[14px]">cancel</span>
-                          {o.status === 'failed' ? 'ব্যর্থ / Failed' : 'বাতিল / Cancelled'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-body-sm text-on-surface-variant">
-                        <span className="material-symbols-outlined text-[16px] text-outline">pin_drop</span>
-                        <span>{areaName(state.areas, o.deliveryAreaId, lang)}</span>
-                        {o.failReason && <span className="text-error">· {o.failReason}</span>}
-                      </div>
-                    </button>
-                  ))}
+                        <div className="p-2 rounded-lg bg-surface-container-lowest border border-error/20 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-error">
+                            <span className="material-symbols-outlined text-[18px]">error_outline</span>
+                            <span className="text-body-sm font-medium">
+                              {o.failReason ?? (isFailed ? 'গ্রাহক অনুপস্থিত / Customer unreachable' : 'অর্ডার বাতিল হয়েছে / Order cancelled')}
+                            </span>
+                          </div>
+                          <span className="text-label-md font-bold text-outline">ফি {fmtTk(0, lang)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-bilingual-sub text-outline pt-0.5">
+                          <span>{isFailed ? 'রিপোর্ট দাখিল' : 'বাতিল হয়েছে'}: {fmtTimeBn(o.updatedAt, lang)}</span>
+                          <span className="text-tertiary underline font-medium">বিস্তারিত রিভিউ</span>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </section>
               )}
             </>

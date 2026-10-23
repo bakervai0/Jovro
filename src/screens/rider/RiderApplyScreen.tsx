@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
@@ -14,24 +14,32 @@ const VEHICLES: { id: 'bicycle' | 'motorbike'; icon: string; titleBn: string; su
 /** Design-style field label: Bangla + English + required star (r1.1). */
 function FieldLabel({ bn, en }: { bn: string; en: string }) {
   return (
-    <label className="block text-label-lg font-semibold text-on-surface">
+    <label className="block text-label-lg text-on-surface">
       {bn} <span className="text-on-surface-variant font-normal">/ {en}</span>
-      <span className="text-error"> *</span>
+      <span className="text-error">*</span>
     </label>
   );
 }
 
 const inputCls =
-  'w-full h-12 pl-11 pr-4 bg-surface-container-lowest border border-outline-variant/50 rounded-xl text-body-md text-on-surface placeholder:text-outline/70 focus:border-primary focus:outline-none transition-all';
+  'w-full h-12 pl-11 pr-4 bg-surface-container-lowest border border-outline-variant/50 rounded-xl text-body-md text-on-surface placeholder:text-outline/70 focus:border-primary focus:outline-none transition-all duration-150';
+
+const pwInputCls =
+  'w-full h-12 pl-11 pr-11 bg-surface-container-lowest border border-outline-variant/50 rounded-xl text-body-md text-on-surface placeholder:text-outline/70 focus:border-primary focus:outline-none transition-all duration-150';
 
 /**
- * F1 Rider application — layout/labels/order follow the Stitch
- * design r1.1 (hero card, bilingual labels, +880 mobile prefix,
- * email warning box, password + confirm, area card, vehicle
- * checkbox-cards, in-flow submit, note box, WhatsApp FAB).
- * F2 received state follows r1.2 (summary card, next-steps
- * timeline, hub support card, OK footer). Submitting creates a
- * PENDING Rider in shared state (admin approvals, H26).
+ * F1 Rider application — strict replica of Stitch design r1.1:
+ * task header, hero card, then a <form> (space-y) with bilingual
+ * labels, +880 mobile prefix, email warning box, password +
+ * confirm, static hub area card with Change button + picker,
+ * checkbox vehicle row(s), in-flow submit, note box, WhatsApp FAB.
+ * F2 received state strictly follows r1.2 (halo clock hero,
+ * summary card, next-steps timeline, hub support card, WhatsApp
+ * FAB with dot badge, OK footer). Submitting creates a PENDING
+ * Rider in shared state (admin approvals, H26).
+ * Deviations (wiring preserved): a second motorbike vehicle row
+ * in the design's row style (app vehicleType data), a password-
+ * mismatch hint, and the received footer's rider-preview button.
  */
 export default function RiderApplyScreen() {
   const { state, dispatch } = useApp();
@@ -50,7 +58,6 @@ export default function RiderApplyScreen() {
   const [submitted, setSubmitted] = useState<Rider | null>(null);
   const [areaOpen, setAreaOpen] = useState(false);
 
-  const area = useMemo(() => state.areas.find(a => a.id === areaId), [state.areas, areaId]);
   const canSubmit =
     name.trim().length >= 3 &&
     mobile.trim().length >= 11 &&
@@ -114,7 +121,7 @@ export default function RiderApplyScreen() {
     const trackingId = `#JVR-${submitted.mobile.slice(-4)}`;
     return (
       <div className="flex-1 flex flex-col bg-[#FAFAF7] overflow-hidden">
-        <header className="flex items-center justify-between px-4 h-14 bg-surface-container-lowest/95 border-b border-outline-variant/30 shrink-0">
+        <header className="sticky top-0 z-40 bg-surface-container-lowest/95 backdrop-blur-md px-4 h-14 flex items-center justify-between border-b border-outline-variant/30 shadow-sm shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-headline-md font-bold text-primary tracking-tight">Jovro</span>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed border border-secondary-container/40 text-label-sm font-semibold">
@@ -122,27 +129,28 @@ export default function RiderApplyScreen() {
               রাইডার পোর্টাল / Rider Portal
             </span>
           </div>
-          <a href={OPERATOR.phoneTel} className="flex items-center gap-1.5 py-1 px-2 rounded-lg bg-surface-container-low text-on-surface">
+          <a href={OPERATOR.phoneTel} className="flex items-center gap-1.5 text-on-surface-variant hover:text-primary transition-colors active:scale-95 duration-150 py-1 px-2 rounded-lg bg-surface-container-low hover:bg-surface-container">
             <span className="material-symbols-outlined text-[18px] text-primary">phone_in_talk</span>
-            <span className="text-label-sm font-semibold">{bn ? OPERATOR.phoneDisplayBn.replace(' (নমুনা)', '') : OPERATOR.phoneDisplayEn.replace(' (sample)', '')}</span>
+            <span className="text-label-sm text-on-surface">{bn ? OPERATOR.phoneDisplayBn.replace(' (নমুনা)', '') : OPERATOR.phoneDisplayEn.replace(' (sample)', '')}</span>
           </a>
         </header>
 
         <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-6 pb-40 flex flex-col gap-5">
           <section className="text-center pt-2 flex flex-col items-center">
             <div className="relative mb-4 flex items-center justify-center">
-              <div className="w-24 h-24 rounded-full bg-secondary-fixed/50 border-2 border-secondary-container/30 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-secondary-container/15 blur-xl scale-150 animate-pulse" />
+              <div className="relative w-24 h-24 rounded-full bg-secondary-fixed/50 border-2 border-secondary-container/30 flex items-center justify-center shadow-sm">
                 <div className="w-16 h-16 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-sm">
-                  <span className="material-symbols-outlined text-[36px] text-secondary-container">schedule</span>
+                  <span className="material-symbols-outlined filled-symbol text-[36px] text-secondary-container font-light">schedule</span>
                 </div>
-              </div>
-              <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary border-2 border-surface-container-lowest flex items-center justify-center">
-                <span className="material-symbols-outlined text-[16px] text-on-primary font-bold">check</span>
+                <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary border-2 border-surface-container-lowest flex items-center justify-center shadow-sm">
+                  <span className="material-symbols-outlined text-[16px] text-on-primary font-bold">check</span>
+                </div>
               </div>
             </div>
             <h1 className="text-headline-md font-bold text-on-surface mb-0.5">আবেদন পেয়েছি!</h1>
             <p className="text-headline-sm text-primary tracking-tight font-semibold mb-3">Application received!</p>
-            <div className="w-full bg-[#E8F5E9] border border-[#1D9D57]/30 rounded-xl p-3 flex items-start gap-2.5 text-left">
+            <div className="w-full bg-[#E8F5E9] border border-[#1D9D57]/30 rounded-xl p-3 flex items-start gap-2.5 text-left shadow-sm">
               <span className="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">verified_user</span>
               <p className="text-body-sm text-on-surface leading-snug">
                 <span className="font-bold text-primary">অ্যাডমিন অনুমোদন করলেই</span> আপনার রাইডার সেকশন চালু হবে
@@ -152,11 +160,11 @@ export default function RiderApplyScreen() {
           </section>
 
           {/* Application summary */}
-          <section className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/30 shadow-sm">
+          <section className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/30 shadow-[0_1px_3px_rgba(43,45,47,0.06),0_1px_2px_rgba(43,45,47,0.04)]">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-outline-variant/20">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-secondary-container text-[20px]">assignment</span>
-                <h2 className="text-label-lg font-semibold text-on-surface">
+                <h2 className="text-label-lg text-on-surface">
                   আবেদন বিবরণী <span className="text-on-surface-variant text-label-md font-normal">(Application Summary)</span>
                 </h2>
               </div>
@@ -170,7 +178,7 @@ export default function RiderApplyScreen() {
                   <span className="material-symbols-outlined text-[16px]">mail</span>
                   জমাকৃত ইমেইল:
                 </span>
-                <span className="text-body-sm font-semibold text-on-surface bg-surface-container-low px-2 py-0.5 rounded border border-outline-variant/20">
+                <span className="text-body-sm font-semibold text-on-surface bg-surface-container-low px-2 py-0.5 rounded border border-outline-variant/20 font-mono">
                   {submitted.email}
                 </span>
               </div>
@@ -197,11 +205,11 @@ export default function RiderApplyScreen() {
           </section>
 
           {/* What happens next */}
-          <section className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/30 shadow-sm">
+          <section className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/30 shadow-[0_1px_3px_rgba(43,45,47,0.06),0_1px_2px_rgba(43,45,47,0.04)]">
             <div className="flex items-center gap-2 mb-4">
               <span className="material-symbols-outlined text-primary text-[20px]">alt_route</span>
               <div>
-                <h2 className="text-label-lg font-semibold text-on-surface">পরবর্তী ধাপসমূহ</h2>
+                <h2 className="text-label-lg text-on-surface">পরবর্তী ধাপসমূহ</h2>
                 <p className="text-bilingual-sub text-on-surface-variant">What happens next</p>
               </div>
             </div>
@@ -223,9 +231,9 @@ export default function RiderApplyScreen() {
               ].map(step => (
                 <div key={step.n} className="relative flex items-start gap-3 pl-1">
                   <div className={clsx(
-                    'w-6 h-6 rounded-full flex items-center justify-center text-label-sm font-bold shadow-sm shrink-0 z-10',
+                    'w-6 h-6 rounded-full flex items-center justify-center text-label-sm font-bold shrink-0 z-10',
                     step.active
-                      ? 'bg-secondary-container text-on-primary'
+                      ? 'bg-secondary-container text-on-primary shadow-sm'
                       : 'bg-surface-container-high text-on-surface-variant border border-outline-variant/40',
                   )}>
                     {step.n}
@@ -255,11 +263,11 @@ export default function RiderApplyScreen() {
                 <span className="material-symbols-outlined text-[22px]">support_agent</span>
               </div>
               <div>
-                <h4 className="text-label-md font-semibold text-on-surface">লালমনিরহাট সদর হাব কন্ট্রোল রুম</h4>
+                <h4 className="text-label-md text-on-surface">লালমনিরহাট সদর হাব কন্ট্রোল রুম</h4>
                 <p className="text-bilingual-sub text-on-surface-variant">জরুরী প্রয়োজনে সরাসরি কথা বলুন</p>
               </div>
             </div>
-            <a href={OPERATOR.phoneTel} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-container-lowest text-primary border border-primary/30 text-label-sm font-bold shadow-sm shrink-0">
+            <a href={OPERATOR.phoneTel} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-container-lowest text-primary border border-primary/30 text-label-sm font-bold shadow-sm hover:bg-primary hover:text-on-primary transition-colors active:scale-95 duration-150 shrink-0">
               <span className="material-symbols-outlined text-[16px]">call</span>
               কল করুন
             </a>
@@ -271,13 +279,14 @@ export default function RiderApplyScreen() {
           target="_blank"
           rel="noopener noreferrer"
           aria-label="WhatsApp Support"
-          className="fixed bottom-40 right-4 z-40 w-[52px] h-[52px] rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg"
+          className="fixed bottom-40 right-4 z-40 w-[52px] h-[52px] rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-[0_6px_16px_rgba(37,211,102,0.35)] active:scale-90 transition-transform"
         >
-          <span className="material-symbols-outlined text-[28px]">chat</span>
+          <span className="material-symbols-outlined filled-symbol text-[28px]">chat</span>
+          <span className="absolute -top-1 -right-1 w-3 h-3 bg-secondary-container rounded-full border-2 border-white" />
         </a>
 
-        <footer className="fixed bottom-0 left-0 right-0 z-50 bg-surface-container-lowest border-t border-outline-variant/30 py-3 px-4 shadow-md">
-          <div className="max-w-[430px] mx-auto flex flex-col items-center gap-2">
+        <footer className="fixed bottom-0 left-0 right-0 z-50 bg-surface-container-lowest border-t border-outline-variant/30 py-3 px-4 shadow-[0_-4px_12px_rgba(43,45,47,0.08)]">
+          <div className="max-w-[480px] mx-auto flex flex-col items-center gap-2">
             {/* Functional extra (not in design): demo preview of the F3 pending notice */}
             <button
               onClick={enterAsPendingRider}
@@ -288,16 +297,16 @@ export default function RiderApplyScreen() {
             </button>
             <button
               onClick={() => navigate('/')}
-              className="w-full h-12 rounded-full bg-primary text-on-primary text-label-lg font-bold flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] transition-transform"
+              className="w-full h-12 rounded-full bg-primary hover:bg-[#15803D] active:scale-95 duration-150 text-on-primary text-label-lg flex items-center justify-center gap-2 shadow-sm font-bold"
             >
               <span>ঠিক আছে / OK</span>
               <span className="material-symbols-outlined text-[18px]">check_circle</span>
             </button>
-            <button onClick={() => navigate('/')} className="py-1 text-body-sm text-on-surface-variant flex items-center justify-center gap-1">
+            <a onClick={() => navigate('/')} className="py-1 text-center text-body-sm text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center gap-1 cursor-pointer">
               <span>কাস্টমার হিসেবে ব্রাউজ করুন</span>
               <span className="text-bilingual-sub text-outline">/ Browse as Customer</span>
               <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-            </button>
+            </a>
           </div>
         </footer>
       </div>
@@ -307,17 +316,18 @@ export default function RiderApplyScreen() {
   // ── F1: the form (design r1.1) ────────────────────────────────
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
-      <header className="flex items-center justify-between px-4 h-14 bg-surface-container-lowest border-b border-outline-variant/30 shrink-0">
+      <header className="sticky top-0 z-40 bg-surface-container-lowest border-b border-outline-variant/30 px-4 h-14 flex items-center justify-between shadow-sm shrink-0">
         <div className="flex items-center gap-2">
           <button
             aria-label="ফিরে যান"
             onClick={() => navigate(-1)}
-            className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-on-surface active:scale-95 transition-transform"
+            className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container-low transition-colors active:scale-95 duration-150"
+            type="button"
           >
             <span className="material-symbols-outlined text-[24px]">arrow_back</span>
           </button>
           <div className="flex flex-col">
-            <h1 className="text-headline-sm font-semibold text-on-surface leading-tight">রাইডার আবেদন</h1>
+            <h1 className="text-headline-sm text-on-surface leading-tight">রাইডার আবেদন</h1>
             <span className="text-bilingual-sub text-on-surface-variant font-medium">Rider Application</span>
           </div>
         </div>
@@ -327,7 +337,7 @@ export default function RiderApplyScreen() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-4 pb-8 flex flex-col gap-5">
+      <div className="px-4 pt-4 pb-6 space-y-6 flex-1 overflow-y-auto no-scrollbar">
         {/* Hero card */}
         <section className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant/30 shadow-sm relative overflow-hidden">
           <div className="flex items-start gap-3.5 relative z-10">
@@ -338,237 +348,238 @@ export default function RiderApplyScreen() {
               <h2 className="text-headline-md text-primary leading-tight font-bold">রাইডার হিসেবে আবেদন করুন</h2>
               <p className="text-label-md text-on-surface-variant mt-0.5">Apply to become a rider</p>
               <div className="mt-2.5 inline-flex items-center gap-1.5 bg-primary/10 text-primary px-2.5 py-1 rounded-full">
-                <span className="material-symbols-outlined text-[16px] text-primary">eco</span>
+                <span className="material-symbols-outlined filled-symbol text-[16px] text-primary">eco</span>
                 <p className="text-body-sm font-medium">নিজের সাইকেলে ডেলিভারি করে আয় করুন / Earn on your bicycle</p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Name */}
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel bn="আপনার নাম" en="Full Name" />
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">person</span>
-            <input
-              className={inputCls}
-              placeholder="যেমন: রফিকুল ইসলাম (e.g. Rafiqul Islam)"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              type="text"
-            />
-          </div>
-        </div>
-
-        {/* Mobile */}
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel bn="মোবাইল নম্বর" en="Mobile Number" />
-          <div className="relative flex items-center">
-            <div className="absolute left-0 top-0 bottom-0 px-3 bg-surface-container rounded-l-xl border-r border-outline-variant/40 flex items-center justify-center text-label-md text-on-surface font-semibold select-none">
-              +880
-            </div>
-            <input
-              className={clsx(inputCls, 'pl-[68px]')}
-              placeholder="01XXXXXXXXX"
-              value={mobile}
-              onChange={e => setMobile(e.target.value)}
-              type="tel"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 text-on-surface-variant text-body-sm pl-1">
-            <span className="material-symbols-outlined text-[16px] text-primary">sms</span>
-            <span>যাচাইকরণ এসএমএস পাঠানো হবে (Verification SMS will be sent)</span>
-          </div>
-        </div>
-
-        {/* Email */}
-        <div className="flex flex-col gap-2">
-          <FieldLabel bn="ইমেইল" en="Email address" />
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">mail</span>
-            <input
-              className={inputCls}
-              placeholder="rafiq.bike@gmail.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              type="email"
-            />
-          </div>
-          <div className="p-3 bg-secondary-fixed/30 border border-secondary/20 rounded-xl flex items-start gap-2.5">
-            <span className="text-base select-none mt-0.5">⚠️</span>
-            <div className="flex-1">
-              <p className="text-label-md text-on-secondary-fixed-variant font-semibold leading-snug">
-                এই ইমেইলটাই অ্যাডমিন অনুমোদন করবেন — ঠিকঠাক লিখুন
-              </p>
-              <p className="text-bilingual-sub text-secondary mt-0.5 font-normal">
-                The admin will approve THIS email — type it carefully
-              </p>
+        {/* Application form */}
+        <form
+          className="space-y-4"
+          onSubmit={e => { e.preventDefault(); submit(); }}
+        >
+          {/* Name */}
+          <div className="space-y-1.5">
+            <FieldLabel bn="আপনার নাম" en="Full Name" />
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">person</span>
+              <input
+                className={inputCls}
+                placeholder="যেমন: রফিকুল ইসলাম (e.g. Rafiqul Islam)"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                type="text"
+              />
             </div>
           </div>
-        </div>
 
-        {/* Password */}
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel bn="পাসওয়ার্ড" en="Password" />
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">lock</span>
-            <input
-              className={clsx(inputCls, 'pr-11')}
-              placeholder="কমপক্ষে ৬ অক্ষর লিখুন"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              type={showPw ? 'text' : 'password'}
-              minLength={6}
-            />
-            <button
-              type="button"
-              aria-label="পাসওয়ার্ড দেখুন"
-              onClick={() => setShowPw(v => !v)}
-              className="absolute right-3 text-on-surface-variant p-1"
-            >
-              <span className="material-symbols-outlined text-[20px]">{showPw ? 'visibility_off' : 'visibility'}</span>
-            </button>
-          </div>
-          <p className="text-body-sm text-on-surface-variant pl-1">কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন (Minimum 6 characters)</p>
-        </div>
-
-        {/* Confirm password */}
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel bn="আবার পাসওয়ার্ড দিন" en="Confirm Password" />
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">lock_reset</span>
-            <input
-              className={clsx(inputCls, 'pr-11')}
-              placeholder="একই পাসওয়ার্ড পুনরায় লিখুন"
-              value={confirm}
-              onChange={e => setConfirm(e.target.value)}
-              type={showConfirm ? 'text' : 'password'}
-            />
-            <button
-              type="button"
-              aria-label="পাসওয়ার্ড পুনরায় দেখুন"
-              onClick={() => setShowConfirm(v => !v)}
-              className="absolute right-3 text-on-surface-variant p-1"
-            >
-              <span className="material-symbols-outlined text-[20px]">{showConfirm ? 'visibility_off' : 'visibility'}</span>
-            </button>
-          </div>
-          {confirm.length > 0 && confirm !== password && (
-            <p className="text-body-sm text-error pl-1">{bn ? 'দুটি পাসওয়ার্ড মিলছে না' : 'Passwords do not match'}</p>
-          )}
-        </div>
-
-        {/* Preferred area card */}
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel bn="আপনার পছন্দের এলাকা" en="Preferred Delivery Area" />
-          <button
-            type="button"
-            onClick={() => setAreaOpen(v => !v)}
-            className="p-3.5 bg-surface-container-lowest border-2 border-primary/25 rounded-2xl flex items-start justify-between gap-3 shadow-sm text-left"
-          >
-            <div className="flex items-start gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
-                <span className="material-symbols-outlined text-[18px]">location_on</span>
+          {/* Mobile */}
+          <div className="space-y-1.5">
+            <FieldLabel bn="মোবাইল নম্বর" en="Mobile Number" />
+            <div className="relative flex items-center">
+              <div className="absolute left-0 top-0 bottom-0 px-3 bg-surface-container rounded-l-xl border-r border-outline-variant/40 flex items-center justify-center text-label-md text-on-surface font-semibold select-none">
+                +880
               </div>
-              <div>
-                <p className="text-label-lg text-on-surface font-bold leading-tight">
-                  {area ? (bn ? area.nameBn : area.nameEn) : bn ? 'এলাকা বেছে নিন' : 'Choose area'}
+              <input
+                className={clsx(inputCls, 'pl-[68px]')}
+                placeholder="01XXXXXXXXX"
+                value={mobile}
+                onChange={e => setMobile(e.target.value)}
+                type="tel"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 text-on-surface-variant text-body-sm pl-1">
+              <span className="material-symbols-outlined text-[16px] text-primary">sms</span>
+              <span>যাচাইকরণ এসএমএস পাঠানো হবে (Verification SMS will be sent)</span>
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="space-y-2">
+            <FieldLabel bn="ইমেইল" en="Email address" />
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">mail</span>
+              <input
+                className={inputCls}
+                placeholder="rafiq.bike@gmail.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                type="email"
+              />
+            </div>
+            <div className="p-3 bg-secondary-fixed/30 border border-secondary/20 rounded-xl flex items-start gap-2.5">
+              <span className="text-base select-none mt-0.5">⚠️</span>
+              <div className="flex-1">
+                <p className="text-label-md text-on-secondary-fixed-variant font-semibold leading-snug">
+                  এই ইমেইলটাই অ্যাডমিন অনুমোদন করবেন — ঠিকঠাক লিখুন
                 </p>
-                <p className="text-body-sm text-on-surface-variant mt-0.5 leading-normal">
-                  লালমনিরহাট সদর
+                <p className="text-bilingual-sub text-secondary mt-0.5 font-normal">
+                  The admin will approve THIS email — type it carefully
                 </p>
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary mt-1">
-                  <span className="material-symbols-outlined text-[13px]">check_circle</span>
-                  ডেলিভারি জোন সক্রিয়
-                </span>
               </div>
             </div>
-            <span className="text-primary font-label-md underline underline-offset-2 shrink-0 pt-0.5">
-              পরিবর্তন করুন <span className="font-normal block text-right text-[10px]">Change</span>
-            </span>
-          </button>
-          {areaOpen && (
-            <div className="max-h-56 overflow-y-auto no-scrollbar rounded-2xl border border-outline-variant/50 divide-y divide-outline-variant/20 bg-surface-container-lowest">
-              {state.areas.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => { setAreaId(a.id); setAreaOpen(false); }}
-                  className={clsx(
-                    'w-full flex items-center justify-between px-3.5 py-2.5 text-left text-body-md',
-                    a.id === areaId ? 'bg-primary/8 text-primary font-semibold' : 'text-on-surface',
-                  )}
-                >
-                  {bn ? a.nameBn : a.nameEn}
-                  {a.id === areaId && <span className="material-symbols-outlined text-[18px]">check</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
 
-        {/* Vehicle checkbox-cards (design style; motorbike kept from F1 spec) */}
-        <div className="flex flex-col gap-2">
+          {/* Password */}
+          <div className="space-y-1.5">
+            <FieldLabel bn="পাসওয়ার্ড" en="Password" />
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">lock</span>
+              <input
+                className={pwInputCls}
+                placeholder="কমপক্ষে ৬ অক্ষর লিখুন"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                type={showPw ? 'text' : 'password'}
+                minLength={6}
+              />
+              <button
+                type="button"
+                aria-label="পাসওয়ার্ড দেখুন"
+                onClick={() => setShowPw(v => !v)}
+                className="absolute right-3 text-on-surface-variant hover:text-on-surface p-1 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[20px]">{showPw ? 'visibility_off' : 'visibility'}</span>
+              </button>
+            </div>
+            <p className="text-body-sm text-on-surface-variant pl-1">কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন (Minimum 6 characters)</p>
+          </div>
+
+          {/* Confirm password */}
+          <div className="space-y-1.5">
+            <FieldLabel bn="আবার পাসওয়ার্ড দিন" en="Confirm Password" />
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-3.5 text-on-surface-variant text-[20px] pointer-events-none">lock_reset</span>
+              <input
+                className={pwInputCls}
+                placeholder="একই পাসওয়ার্ড পুনরায় লিখুন"
+                value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                type={showConfirm ? 'text' : 'password'}
+              />
+              <button
+                type="button"
+                aria-label="পাসওয়ার্ড পুনরায় দেখুন"
+                onClick={() => setShowConfirm(v => !v)}
+                className="absolute right-3 text-on-surface-variant hover:text-on-surface p-1 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[20px]">{showConfirm ? 'visibility_off' : 'visibility'}</span>
+              </button>
+            </div>
+            {confirm.length > 0 && confirm !== password && (
+              <p className="text-body-sm text-error pl-1">{bn ? 'দুটি পাসওয়ার্ড মিলছে না' : 'Passwords do not match'}</p>
+            )}
+          </div>
+
+          {/* Preferred area card (design r1.1: static hub card + Change) */}
+          <div className="space-y-1.5">
+            <FieldLabel bn="আপনার পছন্দের এলাকা" en="Preferred Delivery Area" />
+            <div className="p-3.5 bg-surface-container-lowest border-2 border-primary/25 rounded-2xl flex items-start justify-between gap-3 shadow-sm hover:border-primary/50 transition-colors">
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                  <span className="material-symbols-outlined text-[18px]">location_on</span>
+                </div>
+                <div>
+                  <p className="text-label-lg text-on-surface font-bold leading-tight">
+                    লালমনিরহাট সদর
+                  </p>
+                  <p className="text-body-sm text-on-surface-variant mt-0.5 leading-normal">
+                    মিশন মোড়, বিডিআর গেট, কালীবাড়ি রোড
+                  </p>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary mt-1">
+                    <span className="material-symbols-outlined filled-symbol text-[13px]">check_circle</span>
+                    ডেলিভারি জোন সক্রিয়
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAreaOpen(v => !v)}
+                className="text-primary hover:text-primary-container text-label-md underline underline-offset-2 shrink-0 pt-0.5 active:scale-95 duration-150"
+              >
+                পরিবর্তন করুন <span className="font-normal block text-right text-[10px]">Change</span>
+              </button>
+            </div>
+            {areaOpen && (
+              <div className="max-h-56 overflow-y-auto no-scrollbar rounded-2xl border border-outline-variant/50 divide-y divide-outline-variant/20 bg-surface-container-lowest">
+                {state.areas.map(a => (
+                  <button
+                    type="button"
+                    key={a.id}
+                    onClick={() => { setAreaId(a.id); setAreaOpen(false); }}
+                    className={clsx(
+                      'w-full flex items-center justify-between px-3.5 py-2.5 text-left text-body-md',
+                      a.id === areaId ? 'bg-primary/10 text-primary font-semibold' : 'text-on-surface',
+                    )}
+                  >
+                    {bn ? a.nameBn : a.nameEn}
+                    {a.id === areaId && <span className="material-symbols-outlined text-[18px]">check</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Vehicle checkbox rows (design r1.1 row style) */}
           {VEHICLES.map(v => {
             const selected = vehicle === v.id;
             return (
-              <button
+              <label
                 key={v.id}
-                type="button"
-                onClick={() => setVehicle(v.id)}
                 className={clsx(
-                  'flex items-center gap-3 p-3.5 rounded-2xl bg-surface-container-lowest border-2 shadow-sm text-left transition-colors',
-                  selected ? 'border-primary/60' : 'border-outline-variant/40',
+                  'flex items-start gap-3 p-3.5 rounded-2xl bg-surface-container-lowest border-2 shadow-sm cursor-pointer transition-colors select-none',
+                  selected ? 'border-primary/40 hover:border-primary' : 'border-outline-variant/40 hover:border-primary/60',
                 )}
               >
-                <span className={clsx(
-                  'w-5 h-5 rounded flex items-center justify-center border shrink-0',
-                  selected ? 'bg-primary border-primary text-on-primary' : 'border-outline bg-surface-container-lowest',
-                )}>
-                  {selected && <span className="material-symbols-outlined text-[14px] font-bold">check</span>}
-                </span>
-                <span className="flex-1">
-                  <span className="flex items-center gap-1.5 text-label-lg text-on-surface font-bold">
-                    <span className="material-symbols-outlined text-[20px] text-primary">{v.icon}</span>
-                    {v.titleBn}
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => setVehicle(v.id)}
+                  className="mt-1 w-5 h-5 text-primary border-outline rounded focus:ring-primary focus:ring-offset-0 focus:ring-1 shrink-0"
+                />
+                <span className="flex-1 flex items-center justify-between">
+                  <span>
+                    <span className="flex items-center gap-1.5 text-label-lg text-on-surface font-bold">
+                      <span className="material-symbols-outlined text-[20px] text-primary">{v.icon}</span>
+                      <span>{v.titleBn}</span>
+                    </span>
+                    <span className="block text-bilingual-sub text-on-surface-variant mt-0.5 pl-[26px]">{v.subEn}</span>
                   </span>
-                  <span className="block text-bilingual-sub text-on-surface-variant mt-0.5 pl-[26px]">{v.subEn}</span>
+                  {selected && <span className="material-symbols-outlined filled-symbol text-[20px] text-primary ml-2 shrink-0">verified</span>}
                 </span>
-                {selected && <span className="material-symbols-outlined text-[20px] text-primary shrink-0">verified</span>}
-              </button>
+              </label>
             );
           })}
-        </div>
 
-        {/* Submit */}
-        <div className="pt-2">
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={submit}
-            className={clsx(
-              'w-full h-12 rounded-full text-label-lg font-semibold flex items-center justify-center gap-2 shadow-md transition-all',
-              canSubmit ? 'bg-primary text-on-primary active:scale-[0.98]' : 'bg-surface-container-high text-on-surface-variant shadow-none',
-            )}
-          >
-            <span>আবেদন পাঠান / Submit Application</span>
-            <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
-          </button>
-          {!canSubmit && (
-            <p className="text-label-sm text-on-surface-variant text-center mt-2">
-              {bn ? 'নাম, সঠিক মোবাইল, ইমেইল, ৬+ অক্ষরের পাসওয়ার্ড আর মিলিয়ে আবার পাসওয়ার্ড দিন' : 'Add name, valid mobile, email, a 6+ character password and its confirmation'}
+          {/* Submit */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className={clsx(
+                'w-full h-12 rounded-full text-label-lg flex items-center justify-center gap-2 transition-all duration-150',
+                canSubmit
+                  ? 'bg-primary hover:bg-primary-container active:bg-[#15803D] text-on-primary shadow-md hover:shadow-lg active:scale-[0.98]'
+                  : 'bg-surface-container-high text-on-surface-variant shadow-none cursor-not-allowed',
+              )}
+            >
+              <span>আবেদন পাঠান / Submit Application</span>
+              <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+            </button>
+          </div>
+
+          {/* Bottom note */}
+          <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
+            <p className="text-body-sm text-on-surface-variant leading-relaxed">
+              শুধু আবেদন করলেই অ্যাক্সেস মিলবে না — অ্যাডমিন আপনার ইমেইল অনুমোদন করলেই রাইডার সেকশন চালু হবে।
             </p>
-          )}
-        </div>
-
-        {/* Bottom note */}
-        <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-          <p className="text-body-sm text-on-surface-variant leading-relaxed">
-            শুধু আবেদন করলেই অ্যাক্সেস মিলবে না — অ্যাডমিন আপনার ইমেইল অনুমোদন করলেই রাইডার সেকশন চালু হবে।
-          </p>
-          <p className="text-bilingual-sub text-outline mt-1 leading-normal">
-            Applying alone does not give access — the rider section activates only after the admin approves your email.
-          </p>
-        </div>
+            <p className="text-bilingual-sub text-outline mt-1 leading-normal">
+              Applying alone does not give access — the rider section activates only after the admin approves your email.
+            </p>
+          </div>
+        </form>
       </div>
 
       <a
@@ -576,9 +587,9 @@ export default function RiderApplyScreen() {
         target="_blank"
         rel="noopener noreferrer"
         aria-label="হোয়াটসঅ্যাপে সাহায্য নিন"
-        className="fixed bottom-4 right-4 z-30 w-[52px] h-[52px] rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg"
+        className="fixed bottom-4 right-4 z-30 w-[52px] h-[52px] rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-[0_6px_16px_rgba(37,211,102,0.35)] hover:bg-[#20ba59] active:scale-95 transition-transform"
       >
-        <span className="material-symbols-outlined text-[28px]">chat</span>
+        <span className="material-symbols-outlined filled-symbol text-[28px]">chat</span>
       </a>
     </div>
   );
