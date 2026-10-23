@@ -282,8 +282,8 @@ export const REFERRALS_SEED: ReferralRecord[] = [
 
 // ── Admin settings / home marketing (H9/H11/H15) ─────────────
 export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
-  serviceHours: 'সকাল ৬:০০ – রাত ১০:০০',
-  deliverySlots: ['সকাল ৮টা–১২টা', 'দুপুর ১২টা–৫টা', 'বিকেল ৫টা–৮টা'],
+  serviceHours: 'সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০',
+  deliverySlots: ['সকাল ৬:০০–দুপুর ১:৩০', 'বিকেল ৪:৩০–রাত ১০:৩০'],
   passPrice: 1000,
   passDeliveries: 30,
   passActive: true,

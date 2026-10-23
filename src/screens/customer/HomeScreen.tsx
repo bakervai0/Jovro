@@ -95,7 +95,7 @@ function ServiceBanner({ type }: { type: 'closed' | 'slot_full' }) {
           <span className="material-symbols-outlined text-primary text-base">alarm_on</span>
           <p className="text-body-sm font-body-sm text-on-surface font-semibold">
             {isClosed ? (
-              <>{bn ? 'আবার খুলবে: ' : 'Opens again: '}<span className="text-primary font-bold">{bn ? 'আগামীকাল সকাল ৮:০০ টা' : 'tomorrow at 8:00 AM'}</span></>
+              <>{bn ? 'আবার খুলবে: ' : 'Opens again: '}<span className="text-primary font-bold">{bn ? 'আগামীকাল সকাল ৬:০০ টা' : 'tomorrow at 6:00 AM'}</span></>
             ) : (
               <>{bn ? 'কাল সকালের স্লটে আবার চেষ্টা করুন' : 'Try again in tomorrow morning\u2019s slot'}</>
             )}

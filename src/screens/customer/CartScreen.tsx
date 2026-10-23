@@ -9,16 +9,37 @@ import { BottomSheet } from '../../components/ui/BottomSheet';
 import { placeOrder } from '../../services/orders';
 import type { TimeSlot } from '../../types';
 
-const TIME_SLOTS: { id: TimeSlot; labelBn: string; labelEn: string; icon: string; rangeBn: string; rangeEn: string }[] = [
-  { id: 'morning', labelBn: 'সকাল', labelEn: 'Morning', icon: '🌅', rangeBn: '৮টা–১২টা', rangeEn: '8AM–12PM' },
-  { id: 'afternoon', labelBn: 'দুপুর', labelEn: 'Afternoon', icon: '☀️', rangeBn: '১২টা–৫টা', rangeEn: '12PM–5PM' },
-  { id: 'evening', labelBn: 'সন্ধ্যা', labelEn: 'Evening', icon: '🌆', rangeBn: '৫টা–৮টা', rangeEn: '5PM–8PM' },
+const TIME_SLOTS: {
+  id: TimeSlot; labelBn: string; labelEn: string; icon: string;
+  rangeBn: string; rangeEn: string; tagBn: string; tagEn: string;
+  detailBn: string; detailEn: string;
+}[] = [
+  {
+    id: 'morning', labelBn: 'সকাল', labelEn: 'Morning', icon: '🌅',
+    rangeBn: 'সকাল ৬:০০–দুপুর ১:৩০', rangeEn: '6:00 AM–1:30 PM',
+    tagBn: 'সকাল বাজার', tagEn: 'Morning bazaar',
+    detailBn: 'সকালের তাজা পণ্য ডেলিভারি', detailEn: 'Fresh morning deliveries',
+  },
+  {
+    id: 'afternoon', labelBn: 'দুপুর', labelEn: 'Afternoon', icon: '☀️',
+    rangeBn: 'দুপুর ১২:০০–১:৩০', rangeEn: '12:00–1:30 PM',
+    tagBn: 'দুপুরের রান', tagEn: 'Midday run',
+    detailBn: 'সকালের শিফটের শেষ অংশ', detailEn: 'Final part of the morning shift',
+  },
+  {
+    id: 'evening', labelBn: 'বিকেল', labelEn: 'Evening', icon: '🌆',
+    rangeBn: 'বিকেল ৪:৩০–রাত ১০:৩০', rangeEn: '4:30–10:30 PM',
+    tagBn: 'সন্ধ্যার বাজার', tagEn: 'Evening bazaar',
+    detailBn: 'বিকেল ও সন্ধ্যার বাজার ও খাবার', detailEn: 'Evening groceries and food',
+  },
 ];
 
 export default function CartScreen() {
   const { state, dispatch, cartTotal, cartCount, cartDeliveryFee, cartDiscount, cartFinal, validatePromo, t } = useApp();
   const navigate = useNavigate();
   const lang = state.lang;
+  const defaultAddress = state.addresses.find(a => a.isDefault);
+  const selectedArea = state.areas.find(a => a.id === state.selectedAreaId);
 
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
@@ -182,52 +203,126 @@ export default function CartScreen() {
           )}
         </div>
 
-        {/* Time slot */}
+        {/* Delivery slot — Stitch g3 Part 2: stacked slot cards in
+            one checkout card, radio rows, and the morning slot's
+            dashed Slot Full state with the design's bilingual hint. */}
         <div className="px-4 mt-5">
-          <p className="text-label-lg font-semibold text-on-surface mb-2">
-            {lang === 'bn' ? 'ডেলিভারির সময়' : 'Delivery slot'}
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {TIME_SLOTS.map(slot => {
-              // D12: when slots are full, the morning slot is marked full
-              const isFull = state.isSlotFull && slot.id === 'morning';
-              return (
-              <button
-                key={slot.id}
-                disabled={isFull}
-                onClick={() => setTimeSlot(slot.id)}
-                className={clsx(
-                  'flex flex-col items-center gap-1 p-3 rounded-2xl border transition-all',
-                  isFull
-                    ? 'bg-surface-container border-outline-variant opacity-50 cursor-not-allowed'
-                    : timeSlot === slot.id
-                      ? 'bg-primary/10 border-primary'
-                      : 'bg-surface-container border-outline-variant',
-                )}
-              >
-                <span className="text-[24px]">{slot.icon}</span>
-                <span className={clsx('text-label-md font-medium', !isFull && timeSlot === slot.id ? 'text-primary' : 'text-on-surface')}>
-                  {lang === 'bn' ? slot.labelBn : slot.labelEn}
+          <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/30 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2 border-b border-surface-container pb-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                  <span className="material-symbols-outlined text-lg">local_shipping</span>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-headline-sm font-headline-sm text-on-surface leading-tight font-bold">
+                    {lang === 'bn' ? 'ডেলিভারি সময় বেছে নিন' : 'Choose a delivery time'}
+                  </h3>
+                  <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">Select Preferred Delivery Slot</span>
+                </div>
+              </div>
+              <span className="rounded-full bg-[#FFF7ED] border border-[#F97316]/40 px-2 py-0.5 text-label-sm font-label-sm font-bold text-[#C2410C] shrink-0">
+                ৳{cartDeliveryFee} {lang === 'bn' ? 'ডেলিভারি চার্জ' : 'Delivery Fee'}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              {TIME_SLOTS.map(slot => {
+                // D12: when slots are full, the morning slot is marked full
+                const isFull = state.isSlotFull && slot.id === 'morning';
+                const isSelected = !isFull && timeSlot === slot.id;
+                return (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    disabled={isFull}
+                    aria-pressed={isSelected}
+                    onClick={() => setTimeSlot(slot.id)}
+                    className={clsx(
+                      'relative flex flex-col p-3 rounded-xl text-left transition-all w-full',
+                      isFull
+                        ? 'border border-dashed border-[#F97316]/60 bg-[#FFF7ED]/50 cursor-not-allowed'
+                        : isSelected
+                          ? 'border-2 border-primary bg-surface-container-lowest shadow-sm'
+                          : 'border border-outline-variant/40 bg-surface-container-lowest hover:border-primary/50',
+                    )}
+                  >
+                    <span className="flex items-center justify-between gap-2 w-full">
+                      <span className="flex items-center gap-3 min-w-0">
+                        <span className={clsx(
+                          'w-5 h-5 rounded-full flex items-center justify-center shrink-0',
+                          isFull
+                            ? 'border border-[#D1D5DB] bg-surface-container-high'
+                            : isSelected
+                              ? 'border-2 border-primary'
+                              : 'border border-outline',
+                        )}>
+                          {isFull ? (
+                            <span className="material-symbols-outlined text-[14px] text-error">block</span>
+                          ) : isSelected ? (
+                            <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                          ) : null}
+                        </span>
+                        <span className="flex flex-col min-w-0">
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            <span className={clsx('text-label-lg font-label-lg', isFull ? 'text-on-surface/70 line-through' : 'text-on-surface')}>
+                              {lang === 'bn' ? slot.rangeBn : slot.rangeEn}
+                            </span>
+                            <span className={clsx(
+                              'text-[10px] font-bold px-1.5 py-0.5 rounded',
+                              isSelected && !isFull ? 'bg-[#E8F5E9] text-primary' : 'bg-surface-container text-on-surface-variant',
+                            )}>
+                              {lang === 'bn' ? slot.tagBn : slot.tagEn}
+                            </span>
+                          </span>
+                          <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">
+                            {lang === 'bn' ? slot.detailBn : slot.detailEn}
+                          </span>
+                        </span>
+                      </span>
+                      {isFull ? (
+                        <span className="flex items-center gap-1 bg-[#FEE2E2] border border-[#EF4444]/30 text-error px-2 py-0.5 rounded-full shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-error" />
+                          <span className="text-label-sm font-label-sm font-bold">{lang === 'bn' ? 'ভরে গেছে / Slot Full' : 'Slot Full'}</span>
+                        </span>
+                      ) : (
+                        <span className={clsx('text-label-sm font-label-sm shrink-0', isSelected ? 'text-primary font-bold' : 'text-outline')}>
+                          {isSelected ? (lang === 'bn' ? 'পছন্দ করা হয়েছে' : 'Selected') : (lang === 'bn' ? 'খালি আছে' : 'Available')}
+                        </span>
+                      )}
+                    </span>
+                    {isFull && (
+                      <span className="mt-2.5 pt-2 border-t border-[#F97316]/20 flex items-start gap-1.5 w-full">
+                        <span className="material-symbols-outlined text-base shrink-0 text-[#EA580C] mt-0.5">info</span>
+                        <span className="flex flex-col">
+                          <span className="text-body-sm font-body-sm text-[#C2410C] font-semibold">
+                            এই স্লটের সব রাইডার বুকড • অনুগ্রহ করে অন্য স্লট বেছে নিন
+                          </span>
+                          <span className="text-bilingual-sub font-bilingual-sub text-secondary/80">
+                            All delivery partners are booked for this slot. Please choose another time.
+                          </span>
+                        </span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Address confirmation chip — g3 Part 2 */}
+            <div className="mt-1 p-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-lg shrink-0">pin_drop</span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-body-sm font-body-sm font-semibold text-on-surface truncate">
+                  {lang === 'bn' ? 'ডেলিভারি ঠিকানা: ' : 'Delivery address: '}
+                  {defaultAddress?.fullAddress ?? (lang === 'bn' ? 'কোনো ঠিকানা সেভ করা নেই' : 'No saved address')}
                 </span>
-                {isFull ? (
-                  <span className="text-[10px] font-bold text-error">
-                    {lang === 'bn' ? 'ভরে গেছে / Full' : 'Full'}
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-on-surface-variant">
-                    {lang === 'bn' ? slot.rangeBn : slot.rangeEn}
-                  </span>
-                )}
-              </button>
-              );
-            })}
+                <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">
+                  {selectedArea ? (lang === 'bn' ? selectedArea.nameBn : selectedArea.nameEn) : ''}
+                  {lang === 'bn' ? ' • ডেলিভারি চালু আছে (Delivery Available)' : ' • Delivery Available'}
+                </span>
+              </div>
+            </div>
           </div>
-          {state.isSlotFull && (
-            <p className="text-label-md text-error flex items-center gap-1 mt-2">
-              <span className="material-symbols-outlined text-[15px]">event_busy</span>
-              {lang === 'bn' ? 'অন্য স্লট বেছে নিন' : 'Please choose another slot'}
-            </p>
-          )}
         </div>
 
         {/* Payment method */}
