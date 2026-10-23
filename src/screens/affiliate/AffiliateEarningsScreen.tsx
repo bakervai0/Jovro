@@ -79,8 +79,15 @@ export default function AffiliateEarningsScreen() {
 
   const monthLabel = `${BN_MONTHS[anchorDate.getMonth()]} ${toBnDigits(anchorDate.getFullYear(), lang)}`;
 
+  // Shared ledger rule (same as riders / AdminPayouts):
+  // pendingPayout is the TOTAL unpaid balance including amounts
+  // in pending requests; the balance drops only when the admin
+  // marks a request paid. Requestable = balance − in-flight.
+  const available = Math.max(0, pendingBalance - pendingRequests);
+
   const submitRequest = () => {
     if (!affiliate || !amountNum || amountNum <= 0 || !account.trim()) return;
+    if (amountNum > available) return;
     const req: PaymentRequest = {
       id: uid('pay'),
       riderId: affiliate.id, // paymentRequests serves affiliates too; id prefix 'aff-' distinguishes
@@ -90,8 +97,10 @@ export default function AffiliateEarningsScreen() {
       method,
       accountNumber: account.trim(),
     };
+    // No balance change here — the old code subtracted at
+    // request time AND AdminPayouts subtracted again at payment,
+    // double-deducting every affiliate payout.
     dispatch({ type: 'ADD_PAYMENT_REQUEST', request: req });
-    dispatch({ type: 'UPDATE_AFFILIATE', affiliate: { ...affiliate, pendingPayout: Math.max(0, affiliate.pendingPayout - amountNum) } });
     setAmount('');
     setJustRequested(true);
   };
@@ -221,10 +230,10 @@ export default function AffiliateEarningsScreen() {
               <label className="text-label-lg font-label-lg text-on-surface">{bn ? '১. পরিমাণ / Amount (৳)' : '1. Amount (৳)'}</label>
               <button
                 type="button"
-                onClick={() => { setAmount(String(pendingBalance)); setJustRequested(false); }}
+                onClick={() => { setAmount(String(available)); setJustRequested(false); }}
                 className="text-label-sm font-label-sm text-primary font-bold bg-primary-fixed/30 px-2 py-0.5 rounded active:scale-95 duration-150"
               >
-                {bn ? `সব টাকা: ৳${pendingBalance}` : `All: ৳${pendingBalance}`}
+                {bn ? `সব টাকা: ৳${available}` : `All: ৳${available}`}
               </button>
             </div>
             <div className="relative">
