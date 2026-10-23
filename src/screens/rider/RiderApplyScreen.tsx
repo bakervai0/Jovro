@@ -6,10 +6,10 @@ import type { Rider, User } from '../../types';
 import { uid } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
 
-const VEHICLES: { id: 'bicycle' | 'motorbike'; icon: string; titleBn: string; subEn: string }[] = [
-  { id: 'bicycle', icon: 'pedal_bike', titleBn: 'আমার নিজের সাইকেল আছে', subEn: 'I have my own bicycle' },
-  { id: 'motorbike', icon: 'two_wheeler', titleBn: 'আমার মোটরসাইকেল আছে', subEn: 'I have my own motorbike' },
-];
+// Bicycle ONLY (owner, Oct 23): no motorbike riders — fuel cost.
+// The form carries a single required confirmation row instead of
+// a vehicle picker; every application records vehicleType
+// 'bicycle'. (Existing demo riders keep whatever they have.)
 
 /** Design-style field label: Bangla + English + required star (r1.1). */
 function FieldLabel({ bn, en }: { bn: string; en: string }) {
@@ -37,9 +37,12 @@ const pwInputCls =
  * summary card, next-steps timeline, hub support card, WhatsApp
  * FAB with dot badge, OK footer). Submitting creates a PENDING
  * Rider in shared state (admin approvals, H26).
- * Deviations (wiring preserved): a second motorbike vehicle row
- * in the design's row style (app vehicleType data), a password-
- * mismatch hint, and the received footer's rider-preview button.
+ * Deviations (wiring preserved): a password-mismatch hint and
+ * the received footer's rider-preview button. Owner's rules
+ * (Oct 23): bicycle-only confirmation replaces the vehicle
+ * rows, and the rider-intake gate (adminSettings.riderIntakeOpen
+ * / riderCap) swaps this form for a closed notice when intake
+ * is paused or the cap is reached — checked again at submit.
  */
 export default function RiderApplyScreen() {
   const { state, dispatch } = useApp();
@@ -54,19 +57,34 @@ export default function RiderApplyScreen() {
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [areaId, setAreaId] = useState(state.selectedAreaId);
-  const [vehicle, setVehicle] = useState<'bicycle' | 'motorbike'>('bicycle');
+  const [hasBicycle, setHasBicycle] = useState(false);
   const [submitted, setSubmitted] = useState<Rider | null>(null);
   const [areaOpen, setAreaOpen] = useState(false);
+  const [gateBlocked, setGateBlocked] = useState(false);
+
+  // Rider intake gate (Part B): closed when the admin switch is
+  // off OR active+pending riders already fill the cap. Users who
+  // already hold a rider record are exempt (they may be checking
+  // their application status via the profile link).
+  const intakeCount = state.riders.filter(r => r.status === 'active' || r.status === 'pending').length;
+  const intakeClosed =
+    state.adminSettings.riderIntakeOpen === false ||
+    intakeCount >= (state.adminSettings.riderCap ?? 5);
+  const myRecord = state.riders.find(r => r.userId === state.user?.id);
 
   const canSubmit =
     name.trim().length >= 3 &&
     mobile.trim().length >= 11 &&
     email.includes('@') &&
     password.length >= 6 &&
-    confirm === password;
+    confirm === password &&
+    hasBicycle;
 
   const submit = () => {
     if (!canSubmit) return;
+    // Re-check the gate at submit time — intake may have closed
+    // while this form was sitting open.
+    if (intakeClosed) { setGateBlocked(true); return; }
     const cleanMobile = mobile.trim();
     const rider: Rider = {
       id: uid('rider-app'),
@@ -76,7 +94,7 @@ export default function RiderApplyScreen() {
       mobile: cleanMobile,
       email: email.trim(),
       areaId,
-      vehicleType: vehicle,
+      vehicleType: 'bicycle',
       status: 'pending',
       totalDeliveries: 0,
       totalEarnings: 0,
@@ -313,6 +331,91 @@ export default function RiderApplyScreen() {
     );
   }
 
+  // ── Intake closed (Part B, owner Oct 23) ─────────────────────
+  // Switch off or cap reached → notice instead of the form, in
+  // the affiliate-closed pattern. Friends can still reach the
+  // owner directly via the OPERATOR call/WhatsApp buttons.
+  if ((intakeClosed || gateBlocked) && !myRecord) {
+    return (
+      <div className="flex-1 flex flex-col bg-background overflow-hidden">
+        <header className="sticky top-0 z-40 bg-surface-container-lowest border-b border-outline-variant/30 px-4 h-14 flex items-center justify-between shadow-sm shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="ফিরে যান"
+              onClick={() => navigate('/')}
+              className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container-low transition-colors active:scale-95 duration-150"
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[24px]">arrow_back</span>
+            </button>
+            <div className="flex flex-col">
+              <h1 className="text-headline-sm text-on-surface leading-tight">রাইডার আবেদন</h1>
+              <span className="text-bilingual-sub text-on-surface-variant font-medium">Rider Application</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-headline-sm font-bold text-primary tracking-tight">Jovro</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed uppercase tracking-wider">Lalmonirhat</span>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-5 pb-8 flex flex-col">
+          <section
+            aria-live="polite"
+            className="mb-6 rounded-xl border border-secondary/30 bg-secondary/5 p-4 relative overflow-hidden"
+          >
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-secondary" />
+            <div className="flex items-start gap-3 pl-1">
+              <div className="w-9 h-9 rounded-full bg-secondary/12 flex items-center justify-center shrink-0 text-secondary">
+                <span className="material-symbols-outlined filled-symbol text-[22px]">group_off</span>
+              </div>
+              <div className="flex-1">
+                <h2 className="text-label-lg font-bold text-on-surface leading-tight">
+                  {bn ? 'আপাতত নতুন রাইডার নেওয়া বন্ধ আছে' : 'Rider intake is paused for now'}
+                </h2>
+                <p className="text-bilingual-sub text-on-surface-variant font-medium mt-0.5 mb-2.5 leading-snug">
+                  {bn ? 'Rider intake is paused for now' : 'আপাতত নতুন রাইডার নেওয়া বন্ধ আছে'}
+                </p>
+                <p className="text-body-sm text-on-surface-variant leading-relaxed">
+                  {bn
+                    ? 'এই মুহূর্তে সীমিত সংখ্যক রাইডার নেওয়া হয়েছে — আসন পূরণ হয়ে গেছে। পরে আবার রাইডার নেওয়া খুললে জানানো হবে। জরুরি দরকার হলে নিচের নম্বরে সরাসরি যোগাযোগ করুন।'
+                    : 'A limited number of riders have been taken on and the seats are full. When rider intake opens again, it will be announced. If it is urgent, contact us directly below.'}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <a
+              href={OPERATOR.phoneTel}
+              className="h-12 rounded-full bg-primary text-on-primary flex items-center justify-center gap-2 text-label-lg shadow-sm active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined text-[20px]">call</span>
+              <span>{bn ? 'কল করুন' : 'Call'}</span>
+            </a>
+            <a
+              href={OPERATOR.whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="h-12 rounded-full border-2 border-[#1D9D57]/50 text-[#128C7E] flex items-center justify-center gap-2 text-label-lg font-bold active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined text-[20px]">chat</span>
+              <span>{bn ? 'হোয়াটসঅ্যাপ' : 'WhatsApp'}</span>
+            </a>
+          </div>
+
+          <button
+            onClick={() => navigate('/')}
+            className="w-full h-12 rounded-full border-2 border-outline-variant text-label-lg font-bold text-on-surface flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+          >
+            <span className="material-symbols-outlined text-[20px]">home</span>
+            <span>{bn ? 'হোমে ফিরুন' : 'Back to home'}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── F1: the form (design r1.1) ────────────────────────────────
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
@@ -522,36 +625,35 @@ export default function RiderApplyScreen() {
             )}
           </div>
 
-          {/* Vehicle checkbox rows (design r1.1 row style) */}
-          {VEHICLES.map(v => {
-            const selected = vehicle === v.id;
-            return (
-              <label
-                key={v.id}
-                className={clsx(
-                  'flex items-start gap-3 p-3.5 rounded-2xl bg-surface-container-lowest border-2 shadow-sm cursor-pointer transition-colors select-none',
-                  selected ? 'border-primary/40 hover:border-primary' : 'border-outline-variant/40 hover:border-primary/60',
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected}
-                  onChange={() => setVehicle(v.id)}
-                  className="mt-1 w-5 h-5 text-primary border-outline rounded focus:ring-primary focus:ring-offset-0 focus:ring-1 shrink-0"
-                />
-                <span className="flex-1 flex items-center justify-between">
-                  <span>
-                    <span className="flex items-center gap-1.5 text-label-lg text-on-surface font-bold">
-                      <span className="material-symbols-outlined text-[20px] text-primary">{v.icon}</span>
-                      <span>{v.titleBn}</span>
-                    </span>
-                    <span className="block text-bilingual-sub text-on-surface-variant mt-0.5 pl-[26px]">{v.subEn}</span>
-                  </span>
-                  {selected && <span className="material-symbols-outlined filled-symbol text-[20px] text-primary ml-2 shrink-0">verified</span>}
+          {/* Bicycle confirmation (design r1.1 row style) —
+              bicycle is the ONLY accepted vehicle (owner rule);
+              the application cannot submit without this tick. */}
+          <label
+            className={clsx(
+              'flex items-start gap-3 p-3.5 rounded-2xl bg-surface-container-lowest border-2 shadow-sm cursor-pointer transition-colors select-none',
+              hasBicycle ? 'border-primary/40 hover:border-primary' : 'border-outline-variant/40 hover:border-primary/60',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={hasBicycle}
+              onChange={e => setHasBicycle(e.target.checked)}
+              className="mt-1 w-5 h-5 text-primary border-outline rounded focus:ring-primary focus:ring-offset-0 focus:ring-1 shrink-0"
+            />
+            <span className="flex-1 flex items-center justify-between">
+              <span>
+                <span className="flex items-center gap-1.5 text-label-lg text-on-surface font-bold">
+                  <span className="material-symbols-outlined text-[20px] text-primary">pedal_bike</span>
+                  <span>আমার নিজের সাইকেল আছে</span>
                 </span>
-              </label>
-            );
-          })}
+                <span className="block text-bilingual-sub text-on-surface-variant mt-0.5 pl-[26px]">I have my own bicycle</span>
+                <span className="block text-bilingual-sub text-on-surface-variant mt-0.5 pl-[26px]">
+                  {bn ? 'শুধু সাইকেল রাইডার নেওয়া হয় — মোটরসাইকেল নয়' : 'Bicycle riders only — no motorbikes'}
+                </span>
+              </span>
+              {hasBicycle && <span className="material-symbols-outlined filled-symbol text-[20px] text-primary ml-2 shrink-0">verified</span>}
+            </span>
+          </label>
 
           {/* Submit */}
           <div className="pt-2">

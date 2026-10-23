@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
@@ -6,7 +6,7 @@ import { PageFrame, EmptyState } from '../../components/layout/PageFrame';
 import { useCurrentRider } from '../../components/shared/RiderBits';
 import type { Order } from '../../types';
 import {
-  todayOrders, isActiveOrder, fmtTk, toBnDigits, areaName, SLOT_META, latestOrderDay,
+  todayOrders, isActiveOrder, fmtTk, toBnDigits, areaName, SLOT_META, latestOrderDay, riderEarningOf,
 } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
 
@@ -41,12 +41,17 @@ function fmtTimeBn(iso: string, lang: string): string {
  * All data/logic unchanged.
  */
 export default function RiderHomeScreen() {
-  const { state, unreadCount } = useApp();
+  const { state, dispatch, unreadCount } = useApp();
   const navigate = useNavigate();
   const lang = state.lang;
   const bn = lang === 'bn';
   const rider = useCurrentRider();
-  const [onDuty, setOnDuty] = useState(true);
+  // Duty switch persists on the rider record (was a local demo
+  // state that reset on every mount and affected nothing).
+  const onDuty = rider?.dutyOn !== false;
+  const toggleDuty = () => {
+    if (rider) dispatch({ type: 'UPDATE_RIDER', rider: { ...rider, dutyOn: !onDuty } });
+  };
 
   const myOrders = useMemo(
     () => state.orders.filter(o => o.riderId === rider?.id),
@@ -56,7 +61,7 @@ export default function RiderHomeScreen() {
   const active = todays.filter(isActiveOrder);
   const deliveredToday = todays.filter(o => o.status === 'delivered');
   const failedToday = todays.filter(o => o.status === 'failed' || o.status === 'cancelled');
-  const earningsToday = deliveredToday.reduce((s, o) => s + o.deliveryFee, 0);
+  const earningsToday = deliveredToday.reduce((s, o) => s + riderEarningOf(o, state.adminSettings.companyCutPerDelivery ?? 10), 0);
   const nextOrder = active[0];
   const restActive = active.slice(1);
   const inProgress = restActive.filter(o => o.status === 'buying' || o.status === 'on-the-way');
@@ -203,7 +208,7 @@ export default function RiderHomeScreen() {
 
       <PageFrame>
         <div className="flex flex-col gap-4 py-3">
-          {/* On-duty card — design r1.4 (toggle is a demo visual state) */}
+          {/* On-duty card — design r1.4 (toggle persists on the rider record) */}
           <section className="bg-surface-container-lowest rounded-xl p-3 border-2 border-primary shadow-md">
             <div className="flex items-center justify-between">
               <div className="flex-1 pr-3">
@@ -227,7 +232,7 @@ export default function RiderHomeScreen() {
                 role="switch"
                 aria-checked={onDuty}
                 aria-label="On duty"
-                onClick={() => setOnDuty(v => !v)}
+                onClick={toggleDuty}
                 className={clsx(
                   'w-16 h-9 rounded-full p-1 relative flex items-center cursor-pointer transition-colors shadow-inner shrink-0',
                   onDuty ? 'bg-primary' : 'bg-surface-container-highest',

@@ -7,7 +7,7 @@ import { PageFrame } from '../../components/layout/PageFrame';
 import { Button } from '../../components/ui/Button';
 import type { Order, OrderStatus, TrackingUpdate } from '../../types';
 import {
-  STATUS_META, SLOT_META, areaName, cashToCollect, fmtTk, toBnDigits, uid,
+  STATUS_META, SLOT_META, areaName, cashToCollect, fmtTk, riderEarningOf, toBnDigits, uid,
 } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
 
@@ -128,10 +128,38 @@ export default function RiderOrderDetailScreen() {
 
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setPhotoUrl(URL.createObjectURL(file));
+    if (!file) return;
+    // Downscale to a JPEG data URL (max 800px, ~100 KB): an
+    // object URL would die on the next reload, but the proof
+    // photo is stored on the order (and in localStorage), so
+    // it has to survive — full-size phone photos would blow
+    // the localStorage quota and take all state down with it.
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, 800 / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { setPhotoUrl(objUrl); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+      URL.revokeObjectURL(objUrl);
+      setPhotoUrl(dataUrl);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); };
+    img.src = objUrl;
   };
 
   const markDelivered = () => {
+    // Owner's cut model: the company keeps companyCutPerDelivery
+    // from the delivery fee; the rider earns the rest. The split
+    // is frozen onto the order (riderEarning) so later cut
+    // changes never rewrite history.
+    const cutConfigured = state.adminSettings.companyCutPerDelivery ?? 10;
+    const appliedCut = Math.min(Math.max(0, cutConfigured), order.deliveryFee);
+    const earning = order.deliveryFee - appliedCut;
     const upd: TrackingUpdate = {
       id: uid('trk'),
       status: 'delivered',
@@ -143,12 +171,36 @@ export default function RiderOrderDetailScreen() {
       {
         ...order,
         status: 'delivered',
+        riderEarning: earning,
         proofPhotoUrl: photoUrl ?? order.proofPhotoUrl,
         updatedAt: new Date().toISOString(),
         trackingUpdates: [...order.trackingUpdates, upd],
       },
       `অর্ডার ${order.id} ডেলিভারি সম্পন্ন করেছেন`,
     );
+    // Credit the rider (fee − cut) into pendingPayout + lifetime
+    // totals; the cut accrues to the company fund in settings.
+    const riderRec = state.riders.find(r => r.id === order.riderId);
+    if (riderRec) {
+      dispatch({
+        type: 'UPDATE_RIDER',
+        rider: {
+          ...riderRec,
+          pendingPayout: riderRec.pendingPayout + earning,
+          totalEarnings: riderRec.totalEarnings + earning,
+          totalDeliveries: riderRec.totalDeliveries + 1,
+        },
+      });
+    }
+    if (appliedCut > 0) {
+      dispatch({
+        type: 'UPDATE_ADMIN_SETTINGS',
+        settings: {
+          ...state.adminSettings,
+          companyFundTotal: (state.adminSettings.companyFundTotal ?? 0) + appliedCut,
+        },
+      });
+    }
     setShowDeliverConfirm(false);
     setJustDelivered(true);
   };
@@ -174,6 +226,23 @@ export default function RiderOrderDetailScreen() {
       },
       `অর্ডার ${order.id} ডেলিভারি ব্যর্থ হিসেবে জানিয়েছেন`,
     );
+    // A failed delivery is also an operator problem case: file
+    // it into problemReports so it lands in Admin → Problems
+    // (before this, failures never reached that queue at all).
+    dispatch({
+      type: 'ADD_PROBLEM_REPORT',
+      report: {
+        id: uid('prob'),
+        orderId: order.id,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        problemType: 'other',
+        descriptionBn: `ডেলিভারি ব্যর্থ: ${fullReason}`,
+        descriptionEn: `Delivery failed: ${fullReason}`,
+        status: 'open',
+        createdAt: new Date().toISOString(),
+      },
+    });
     setShowFail(false);
     setJustFailed(true);
   };
@@ -192,7 +261,9 @@ export default function RiderOrderDetailScreen() {
     const remaining = state.orders.filter(
       o => o.riderId === order.riderId && o.id !== order.id && !['delivered', 'failed', 'cancelled'].includes(o.status),
     ).length;
-    const prevBalance = rider ? rider.pendingPayout - order.deliveryFee : null;
+    const earning = riderEarningOf(order, state.adminSettings.companyCutPerDelivery ?? 10);
+    const cut = order.deliveryFee - earning;
+    const prevBalance = rider ? rider.pendingPayout - earning : null;
     return (
       <div className="flex-1 flex flex-col bg-surface overflow-hidden">
         <header className="sticky top-0 z-40 bg-surface-container-lowest/95 backdrop-blur-md px-4 py-3 shadow-sm border-b border-outline-variant/30 shrink-0">
@@ -290,12 +361,22 @@ export default function RiderOrderDetailScreen() {
               </div>
               <div className="flex-1">
                 <div className="flex items-baseline gap-1">
-                  <span className="font-headline-sm text-headline-sm text-primary font-bold leading-tight">+{fmtTk(order.deliveryFee, lang)}</span>
+                  <span className="font-headline-sm text-headline-sm text-primary font-bold leading-tight">+{fmtTk(earning, lang)}</span>
                   <span className="font-label-lg text-label-lg text-primary font-semibold">{bn ? 'আপনার আয়ে যোগ হয়েছে!' : 'added to your earnings!'}</span>
                 </div>
                 <p className="font-bilingual-sub text-bilingual-sub text-primary/90 mt-0.5">
-                  +{fmtTk(order.deliveryFee, lang)} added to your earnings for this trip
+                  +{fmtTk(earning, lang)} added to your earnings for this trip
                 </p>
+                <div className="mt-2 space-y-1 text-body-sm font-body-sm text-on-surface-variant">
+                  <p className="flex items-center justify-between">
+                    <span>{bn ? 'ডেলিভারি ফি' : 'Delivery fee'}</span>
+                    <span className="font-semibold text-on-surface">{fmtTk(order.deliveryFee, lang)}</span>
+                  </p>
+                  <p className="flex items-center justify-between">
+                    <span>{bn ? 'কোম্পানি কাট (কোম্পানির ফান্ডে)' : 'Company cut (to company fund)'}</span>
+                    <span className="font-semibold text-error">−{fmtTk(cut, lang)}</span>
+                  </p>
+                </div>
                 {rider && (
                   <div className="mt-2 pt-2 border-t border-primary/20 flex items-center justify-between text-body-sm font-body-sm text-on-surface-variant">
                     <span>{bn ? 'আপনার মোট তোলার বাকি ব্যালেন্স:' : 'Your pending payout balance:'}</span>
@@ -784,7 +865,15 @@ export default function RiderOrderDetailScreen() {
   }
 
   // ── Main detail (r3.1) + tracking panel (r3.2) ───────────────
-  const sentStepIdx = TRACK_STEPS.map(step =>
+  // TRACK_STEPS holds both 'buying' variants (bazaar + restaurant);
+  // show only the one(s) matching this order's item sources, so a
+  // restaurant order never offers the "Bought from Goshala" step.
+  const hasRestaurantItems = order.items.some(i => i.source === 'restaurant');
+  const hasBazaarItems = order.items.some(i => i.source !== 'restaurant');
+  const steps = TRACK_STEPS.filter((step, i) =>
+    step.status !== 'buying' || (i === 0 ? hasBazaarItems || !hasRestaurantItems : hasRestaurantItems),
+  );
+  const sentStepIdx = steps.map(step =>
     order.trackingUpdates.some(u => u.messageEn === step.labelEn),
   );
   const currentStepIdx = sentStepIdx.findIndex(s => !s);
@@ -1026,12 +1115,12 @@ export default function RiderOrderDetailScreen() {
                   <p className="font-bilingual-sub text-bilingual-sub text-on-surface-variant">Send the customer an honest live status update</p>
                 </div>
                 <span className="font-label-sm text-label-sm uppercase bg-surface-container-high px-2 py-1 rounded text-on-surface-variant font-bold shrink-0">
-                  {bn ? `ধাপ ${toBnDigits(Math.min(sentCount + 1, TRACK_STEPS.length), lang)} / ${toBnDigits(TRACK_STEPS.length, lang)}` : `Step ${Math.min(sentCount + 1, TRACK_STEPS.length)} / ${TRACK_STEPS.length}`}
+                  {bn ? `ধাপ ${toBnDigits(Math.min(sentCount + 1, steps.length), lang)} / ${toBnDigits(steps.length, lang)}` : `Step ${Math.min(sentCount + 1, steps.length)} / ${steps.length}`}
                 </span>
               </div>
 
               <div className="flex flex-col gap-3.5 mt-3">
-                {TRACK_STEPS.map((step, i) => {
+                {steps.map((step, i) => {
                   const sent = sentStepIdx[i];
                   const isCurrent = i === currentStepIdx;
                   const sentUpdate = order.trackingUpdates.find(u => u.messageEn === step.labelEn);

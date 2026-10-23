@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Button } from '../../components/ui/Button';
+import { TopAppBar } from '../../components/layout/TopAppBar';
 import { DemoRoleSwitcher } from '../../components/shared/DemoRoleSwitcher';
 import { OPERATOR } from '../../data/infoContent';
+import type { RiderStatus } from '../../types';
 
 /**
  * F3 — sign-in pending notice. Strict replica of design r1.3:
@@ -242,6 +244,111 @@ export default function RiderPendingScreen() {
           <span className="text-label-sm font-bold">হোয়াটসঅ্যাপ</span>
         </a>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Rider access blocked — shown by the /rider layout guard when
+ * the signed-in user has NO rider record, or their record is
+ * inactive (application rejected / deactivated) or suspended.
+ * Only 'active' riders reach the dashboard; 'pending' riders
+ * get RiderPendingScreen above. Same notice-card pattern as
+ * the affiliate closed screen, in the error accent.
+ */
+export function RiderBlockedScreen({ status }: { status?: RiderStatus }) {
+  const { state, dispatch } = useApp();
+  const navigate = useNavigate();
+  const bn = state.lang === 'bn';
+
+  const backToCustomer = () => {
+    dispatch({ type: 'SET_ROLE', role: 'customer' });
+    navigate('/', { replace: true });
+  };
+
+  const copy = status === 'suspended'
+    ? {
+        icon: 'block',
+        bn: 'আপনার রাইডার অ্যাকাউন্টটি স্থগিত করা হয়েছে',
+        en: 'Your rider account has been suspended',
+        bodyBn: 'অ্যাডমিন আপনার রাইডার অ্যাকাউন্টটি আপাতত স্থগিত রেখেছেন। বিস্তারিত জানতে অপারেটরের সঙ্গে যোগাযোগ করুন।',
+        bodyEn: 'The admin has suspended your rider account for now. Please contact the operator for details.',
+      }
+    : status === 'inactive'
+      ? {
+          icon: 'person_off',
+          bn: 'আপনার রাইডার আবেদনটি অনুমোদিত হয়নি',
+          en: 'Your rider application was not approved',
+          bodyBn: 'দুঃখিত — আপনার রাইডার অ্যাকাউন্টটি সক্রিয় নেই, তাই ড্যাশবোর্ডে ঢোকা যাচ্ছে না। কোনো ভুল হয়ে থাকলে অপারেটরের সঙ্গে যোগাযোগ করুন।',
+          bodyEn: 'Sorry — your rider account is not active, so the dashboard is unavailable. If this looks like a mistake, please contact the operator.',
+        }
+      : {
+          icon: 'person_off',
+          bn: 'এই অ্যাকাউন্টে কোনো রাইডার রেকর্ড নেই',
+          en: 'No rider record for this account',
+          bodyBn: 'এই অ্যাকাউন্টের সঙ্গে কোনো রাইডার আবেদন যুক্ত নেই। রাইডার হিসেবে যোগ দিতে চাইলে আগে আবেদন করুন।',
+          bodyEn: 'No rider application is linked to this account. Please apply first if you want to ride with us.',
+        };
+
+  return (
+    <div className="flex-1 flex flex-col bg-surface overflow-hidden">
+      <TopAppBar
+        title={bn ? 'রাইডার পোর্টাল' : 'Rider Portal'}
+        subtitle={bn ? 'Rider Portal' : 'রাইডার পোর্টাল'}
+        showBack
+        onBack={backToCustomer}
+      />
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-5 pb-8 flex flex-col">
+        <section
+          aria-live="polite"
+          className="mb-6 rounded-xl border border-error/30 bg-error/5 p-4 relative overflow-hidden"
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-error" />
+          <div className="flex items-start gap-3 pl-1">
+            <div className="w-9 h-9 rounded-full bg-error/12 flex items-center justify-center shrink-0 text-error">
+              <span className="material-symbols-outlined filled-symbol text-[22px]">{copy.icon}</span>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-label-lg font-bold text-on-surface leading-tight">
+                {bn ? copy.bn : copy.en}
+              </h2>
+              <p className="text-bilingual-sub text-on-surface-variant font-medium mt-0.5 mb-2.5 leading-snug">
+                {bn ? copy.en : copy.bn}
+              </p>
+              <p className="text-body-sm text-on-surface-variant leading-relaxed">
+                {bn ? copy.bodyBn : copy.bodyEn}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <a
+            href={OPERATOR.phoneTel}
+            className="h-12 rounded-full bg-primary text-on-primary flex items-center justify-center gap-2 text-label-lg shadow-sm active:scale-[0.98] transition-all"
+          >
+            <span className="material-symbols-outlined text-[20px]">call</span>
+            <span>{bn ? 'কল করুন' : 'Call'}</span>
+          </a>
+          <a
+            href={OPERATOR.whatsappUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="h-12 rounded-full border-2 border-[#1D9D57]/50 text-[#128C7E] flex items-center justify-center gap-2 text-label-lg font-bold active:scale-[0.98] transition-all"
+          >
+            <span className="material-symbols-outlined text-[20px]">chat</span>
+            <span>{bn ? 'হোয়াটসঅ্যাপ' : 'WhatsApp'}</span>
+          </a>
+        </div>
+
+        <Button variant="outline" size="full" icon="home" onClick={backToCustomer}>
+          {bn ? 'হোমে ফিরুন' : 'Back to home'}
+        </Button>
+
+        <div className="mt-4">
+          <DemoRoleSwitcher />
+        </div>
+      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { PageFrame, EmptyState } from '../../components/layout/PageFrame';
 import { useCurrentRider } from '../../components/shared/RiderBits';
 import {
-  dayKey, latestOrderDay, fmtTk, toBnDigits, STATUS_META,
+  dayKey, latestOrderDay, fmtTk, toBnDigits, STATUS_META, riderEarningOf,
 } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
 import type { Order } from '../../types';
@@ -81,9 +81,10 @@ export default function RiderHistoryScreen() {
   const monthList = mine.filter(o => dayKey(o.createdAt).slice(0, 7) === anchor.slice(0, 7));
   const weekDone = weekList.filter(o => o.status === 'delivered');
   const weekFailed = weekList.filter(o => o.status === 'failed' || o.status === 'cancelled');
-  const weekEarned = weekDone.reduce((s, o) => s + o.deliveryFee, 0);
+  const cut = state.adminSettings.companyCutPerDelivery ?? 10;
+  const weekEarned = weekDone.reduce((s, o) => s + riderEarningOf(o, cut), 0);
   const monthDone = monthList.filter(o => o.status === 'delivered');
-  const monthEarned = monthDone.reduce((s, o) => s + o.deliveryFee, 0);
+  const monthEarned = monthDone.reduce((s, o) => s + riderEarningOf(o, cut), 0);
   const finishedWeek = weekDone.length + weekFailed.length;
   const weekPct = finishedWeek > 0 ? Math.round((weekDone.length / finishedWeek) * 100) : 0;
 
@@ -241,7 +242,7 @@ export default function RiderHistoryScreen() {
               const done = orders.filter(o => o.status === 'delivered');
               const failed = orders.filter(o => o.status === 'failed' || o.status === 'cancelled');
               const active = orders.filter(o => !['delivered', 'failed', 'cancelled'].includes(o.status));
-              const earned = done.reduce((s, o) => s + o.deliveryFee, 0);
+              const earned = done.reduce((s, o) => s + riderEarningOf(o, cut), 0);
               const isToday = day === anchor;
               const isYesterday = day === yesterday;
               const open = effectiveOpen === day;
@@ -343,7 +344,7 @@ export default function RiderHistoryScreen() {
                             <div className="flex items-center gap-2.5 text-right shrink-0">
                               <div>
                                 <span className={`block font-bold text-label-md ${isFailed ? 'text-on-surface-variant' : 'text-on-surface'}`}>
-                                  {bn ? 'ফি' : 'Fee'} {fmtTk(isFailed ? 0 : o.deliveryFee, lang)}
+                                  {bn ? 'আয়' : 'Earned'} {fmtTk(isFailed ? 0 : riderEarningOf(o, cut), lang)}
                                 </span>
                                 <span className={`text-[10px] ${isFailed ? 'text-error' : 'text-on-surface-variant'}`}>
                                   {isFailed ? (bn ? 'ব্যর্থ রিটার্ন' : 'Failed return') : (bn ? 'নগদ প্রদান' : 'Cash payment')}

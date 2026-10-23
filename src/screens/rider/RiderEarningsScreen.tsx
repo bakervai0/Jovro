@@ -1,10 +1,10 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { PageFrame } from '../../components/layout/PageFrame';
 import { useCurrentRider } from '../../components/shared/RiderBits';
-import { fmtTk, toBnDigits, dayKey, latestOrderDay, uid } from '../../services/orderUtils';
+import { fmtTk, toBnDigits, dayKey, latestOrderDay, riderEarningOf } from '../../services/orderUtils';
 import { OPERATOR } from '../../data/infoContent';
 import type { Order, PaymentRequest } from '../../types';
 
@@ -61,11 +61,9 @@ export default function RiderEarningsScreen() {
   const bn = lang === 'bn';
   const rider = useCurrentRider();
 
-  const [method, setMethod] = useState<'bkash' | 'nagad'>('bkash');
-  const [amount, setAmount] = useState('');
-  const [account, setAccount] = useState(rider?.mobile ?? '');
-  const [justRequested, setJustRequested] = useState(false);
-  const formRef = useRef<HTMLElement>(null);
+  // Owner's model (Oct 23): no per-request withdrawals — riders
+  // deposit all cash at the office and are paid their accumulated
+  // share (fee − company cut) as a MONTHLY settlement.
 
   const delivered = useMemo(
     () => state.orders
@@ -83,10 +81,14 @@ export default function RiderEarningsScreen() {
     return diff >= 0 && diff < days;
   };
 
-  const sumFee = (list: typeof delivered) => list.reduce((s, o) => s + o.deliveryFee, 0);
+  const cut = state.adminSettings.companyCutPerDelivery ?? 10;
+  // All rider-facing totals are the rider's share: fee − cut.
+  const sumFee = (list: typeof delivered) => list.reduce((s, o) => s + riderEarningOf(o, cut), 0);
   const todayList = delivered.filter(o => dayKey(o.createdAt) === anchor);
   const weekList = delivered.filter(o => inLastDays(o.createdAt, 7));
-  const todayFeeUniform = todayList.length > 0 && todayList.every(o => o.deliveryFee === todayList[0].deliveryFee);
+  const monthList = delivered.filter(o => dayKey(o.createdAt).slice(0, 7) === anchor.slice(0, 7));
+  const monthEarning = sumFee(monthList);
+  const todayFeeUniform = todayList.length > 0 && todayList.every(o => riderEarningOf(o, cut) === riderEarningOf(todayList[0], cut));
 
   const periods = [
     { kind: 'today' as const, labelBn: 'আজ / Today', labelEn: 'Today', value: sumFee(todayList), count: todayList.length, icon: null as string | null, iconClass: '', dot: true },
@@ -96,7 +98,6 @@ export default function RiderEarningsScreen() {
 
   const myRequests = state.paymentRequests.filter(r => r.riderId === rider?.id);
   const pendingPayout = rider?.pendingPayout ?? 0;
-  const amountNum = parseInt(amount, 10);
 
   /* Recent stream (r2.3): completed deliveries aggregated per day,
      interleaved with paid-out requests (outbox rows), newest first. */
@@ -114,7 +115,7 @@ export default function RiderEarningsScreen() {
       key: `earn-${day}`,
       day,
       count: list.length,
-      total: list.reduce((s, o) => s + o.deliveryFee, 0),
+      total: list.reduce((s, o) => s + riderEarningOf(o, cut), 0),
       latestIso: list[0].createdAt,
     }));
     const payouts: StreamItem[] = myRequests
@@ -129,23 +130,6 @@ export default function RiderEarningsScreen() {
     day === anchor ? (bn ? 'আজ' : 'Today')
       : day === yesterday ? (bn ? 'গতকাল' : 'Yesterday')
         : fmtShortDay(day, lang);
-
-  const submitRequest = () => {
-    if (!rider || !amountNum || amountNum <= 0 || !account.trim()) return;
-    const req: PaymentRequest = {
-      id: uid('pay'),
-      riderId: rider.id,
-      amount: amountNum,
-      status: 'pending',
-      requestedAt: new Date().toISOString(),
-      method,
-      accountNumber: account.trim(),
-    };
-    dispatch({ type: 'ADD_PAYMENT_REQUEST', request: req });
-    dispatch({ type: 'UPDATE_RIDER', rider: { ...rider, pendingPayout: rider.pendingPayout + amountNum } });
-    setAmount('');
-    setJustRequested(true);
-  };
 
   const riderName = bn ? rider?.nameBn : rider?.name;
   const riderInitial = riderName?.trim().charAt(0) ?? 'র';
@@ -237,7 +221,7 @@ export default function RiderEarningsScreen() {
             <div className="flex items-center justify-between mb-3">
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/15 backdrop-blur text-white text-label-md font-label-md">
                 <span className="material-symbols-outlined text-sm mr-1.5 text-primary-fixed">hourglass_top</span>
-                {bn ? 'তোলার বাকি / Pending payout' : 'Pending payout'}
+                {bn ? 'মোট পাওনা বাকি / Pending payable' : 'Pending payable'}
               </span>
               <span className="text-xs text-primary-fixed-dim font-medium tracking-wide">{bn ? '১০০% স্বচ্ছ হিসাব' : '100% transparent'}</span>
             </div>
@@ -248,36 +232,45 @@ export default function RiderEarningsScreen() {
             </div>
             <p className="text-body-sm font-body-sm text-white/90 mt-2 leading-relaxed">
               {bn
-                ? <>প্রতিটা সম্পন্ন ডেলিভারির ফি এখানে জমা হয় <span className="text-primary-fixed text-xs">• The fee of every completed delivery collects here</span></>
-                : 'The fee of every completed delivery collects here.'}
+                ? <>প্রতিটা ডেলিভারির আয় (ফি − কোম্পানি কাট) এখানে জমা হয় <span className="text-primary-fixed text-xs">• Your share of every delivery fee (fee − company cut) collects here</span></>
+                : 'Your share of every delivery fee (fee − company cut) collects here.'}
             </p>
             <div className="w-full h-px bg-white/15 my-3.5" />
             <div className="flex items-center gap-2 text-[11px] text-white/90 font-medium">
               <span className="material-symbols-outlined text-[16px] text-primary-fixed shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-              <span>{bn ? 'সর্বনিম্ন তোলার সীমা নেই • কোনো ফি বা কমিশন কাটা হয় না (Zero platform deduction)' : 'No minimum limit • zero platform deduction'}</span>
+              <span>{bn ? 'মাসের শেষে অফিস থেকে পেমেন্ট দেওয়া হবে • Paid from the office at month-end' : 'Paid from the office at month-end'}</span>
             </div>
           </div>
         </section>
 
-        {/* Request entry (r2.3) → scrolls to the r2.4 form */}
-        <section className="space-y-2 mt-4">
-          <button
-            onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="w-full min-h-[56px] rounded-full bg-primary hover:bg-primary-container text-white font-label-lg text-body-lg shadow-md flex items-center justify-center gap-2.5 px-6 border border-primary-fixed/30 active:scale-[0.98] transition-all"
-          >
-            <span className="material-symbols-outlined text-xl">payments</span>
-            <span className="font-bold">{bn ? 'পেমেন্ট রিকোয়েস্ট পাঠান / Request payment' : 'Request payment'}</span>
-            <span className="material-symbols-outlined text-lg">arrow_forward</span>
-          </button>
-          <div className="flex items-start gap-2 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-3 text-on-surface-variant text-body-sm shadow-sm">
-            <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">support_agent</span>
-            <div className="text-[12px] leading-snug">
-              <span className="font-semibold text-on-surface">{bn ? 'পেমেন্ট অ্যাডমিন নিজে বিকাশ/নগদে পাঠিয়ে দেবেন' : 'The admin sends payment personally by bKash/Nagad'}</span>
-              <span className="text-outline text-[11px] block mt-0.5">
+        {/* Monthly settlement summary (owner's model, Oct 23 —
+            replaces the old per-request withdrawal entry) */}
+        <section className="mt-4 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px]">calendar_month</span>
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-label-lg font-label-lg font-bold text-on-surface">
+                {bn ? 'মাসিক সেটেলমেন্ট / Monthly settlement' : 'Monthly settlement'}
+              </p>
+              <p className="text-body-sm text-on-surface-variant leading-relaxed mt-0.5">
                 {bn
-                  ? 'The admin sends payment personally by bKash/Nagad (সাধারণতঃ ১২ ঘণ্টার মধ্যে পরিশোধ করা হয় / Usually processed within 12 hours)'
-                  : 'Usually processed within 12 hours'}
-              </span>
+                  ? 'মাসের শেষে অফিস থেকে পেমেন্ট দেওয়া হবে। প্রতিদিনের সব ডেলিভারির ক্যাশ অফিসে জমা দিন — আলাদা করে টাকা তোলার রিকোয়েস্ট লাগবে না।'
+                  : 'You will be paid from the office at the end of the month. Deposit all delivery cash at the office daily — no separate withdrawal request is needed.'}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 mt-3.5">
+            <div className="bg-surface-container-low rounded-xl border border-outline-variant/30 p-3 text-center">
+              <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">{bn ? 'এই মাসের আয়' : "This month's earnings"}</p>
+              <p className="text-headline-sm font-headline-sm font-bold text-primary mt-0.5">{fmtTk(monthEarning, lang)}</p>
+              <p className="text-[10px] text-outline">{bn ? `${toBnDigits(monthList.length, lang)}টি ডেলিভারি` : `${monthList.length} deliveries`}</p>
+            </div>
+            <div className="bg-surface-container-low rounded-xl border border-outline-variant/30 p-3 text-center">
+              <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">{bn ? 'মোট পাওনা বাকি' : 'Total pending payable'}</p>
+              <p className="text-headline-sm font-headline-sm font-bold text-on-surface mt-0.5">{fmtTk(pendingPayout, lang)}</p>
+              <p className="text-[10px] text-outline">{bn ? 'সেটেলমেন্টে পরিশোধ হবে' : 'Paid at settlement'}</p>
             </div>
           </div>
         </section>
@@ -307,7 +300,7 @@ export default function RiderEarningsScreen() {
                       {todayFeeUniform && (
                         <>
                           <br />
-                          <span className="text-outline text-[9px]">({toBnDigits(p.count, lang)} × {fmtTk(todayList[0].deliveryFee, lang)})</span>
+                          <span className="text-outline text-[9px]">({toBnDigits(p.count, lang)} × {fmtTk(riderEarningOf(todayList[0], cut), lang)})</span>
                         </>
                       )}
                     </p>
@@ -380,7 +373,9 @@ export default function RiderEarningsScreen() {
                     </div>
                   );
                 }
-                const meta = METHODS.find(m => m.id === it.req.method) ?? METHODS[0];
+                const meta = it.req.method === 'office'
+                  ? { labelBn: 'অফিস', labelEn: 'Office', tile: 'OF', tileClass: 'bg-primary', dotClass: 'bg-primary' }
+                  : METHODS.find(m => m.id === it.req.method) ?? METHODS[0];
                 const paidDay = dayKey(it.iso);
                 return (
                   <div key={it.key} className="p-3.5 flex items-center justify-between hover:bg-surface-container-low transition-colors bg-surface-container-lowest">
@@ -413,141 +408,56 @@ export default function RiderEarningsScreen() {
           )}
         </section>
 
-        {/* Withdrawal form (r2.4) */}
-        <section ref={formRef} className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant/30 shadow-sm space-y-4 mt-4 scroll-mt-20">
+        {/* Pay breakdown (owner's model, Oct 23 — replaces the
+            r2.4 withdrawal form: riders never request payouts;
+            the office settles the accumulated share monthly) */}
+        <section className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant/30 shadow-sm space-y-3 mt-4">
           <div className="flex items-center gap-2 border-b border-outline-variant/20 pb-2.5">
-            <span className="material-symbols-outlined text-primary text-[20px]">payments</span>
+            <span className="material-symbols-outlined text-primary text-[20px]">receipt_long</span>
             <h2 className="font-headline-sm text-[16px] font-bold text-on-surface">
-              {bn ? 'টাকা উত্তোলনের ফর্ম (Withdrawal Form)' : 'Withdrawal Form'}
+              {bn ? 'হিসাবের বিবরণ (How your pay works)' : 'How your pay works'}
             </h2>
           </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <label className="font-label-md text-label-md text-on-surface font-semibold">
-                {bn ? 'পরিমাণ / Amount (৳)' : 'Amount (৳)'}
-              </label>
-              <span className="font-bilingual-sub text-bilingual-sub text-on-surface-variant">{bn ? 'সর্বনিম্ন ৳১০০' : 'Minimum ৳100'}</span>
-            </div>
-            <div className="relative flex items-center">
-              <span className="absolute left-3.5 font-bold text-primary font-headline-sm text-[18px]">৳</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={amount}
-                onChange={e => { setAmount(e.target.value); setJustRequested(false); }}
-                placeholder="500"
-                className="w-full h-12 pl-9 pr-32 bg-surface-container-lowest rounded-xl border border-outline-variant text-on-surface font-headline-sm text-[18px] font-bold focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-              />
-              <button
-                type="button"
-                onClick={() => { setAmount(String(pendingPayout)); setJustRequested(false); }}
-                className="absolute right-2 px-2.5 py-1.5 bg-primary-container/10 text-primary border border-primary/20 rounded-lg font-label-md text-label-md font-bold flex items-center gap-1"
-              >
-                <span>{bn ? 'পুরো টাকা তুলুন' : 'Withdraw all'}</span>
-                <span className="font-bilingual-sub text-[10px] opacity-80">(All: {fmtTk(pendingPayout, lang)})</span>
-              </button>
-            </div>
-            <p className="flex items-center gap-1.5 text-on-surface-variant font-bilingual-sub text-bilingual-sub pt-0.5">
-              <span className="material-symbols-outlined text-[15px] text-primary">info</span>
-              {bn ? `সর্বোচ্চ তোলার বাকি ব্যালেন্স ৳${toBnDigits(pendingPayout.toLocaleString('en-IN'), lang)}` : `Maximum available balance ৳${pendingPayout}`}
+          <div className="space-y-2.5 text-body-sm">
+            <p className="flex items-start gap-2.5">
+              <span className="material-symbols-outlined text-primary text-[19px] shrink-0 mt-0.5">pedal_bike</span>
+              <span className="text-on-surface-variant">
+                {bn
+                  ? <>প্রতি ডেলিভারিতে কোম্পানি কাট <b className="text-on-surface">{fmtTk(cut, lang)}</b> — বাকি পুরো ফি-ই আপনার আয়।</>
+                  : <>The company keeps <b className="text-on-surface">{fmtTk(cut, lang)}</b> per delivery — the rest of the fee is entirely your earning.</>}
+              </span>
+            </p>
+            <p className="flex items-start gap-2.5">
+              <span className="material-symbols-outlined text-primary text-[19px] shrink-0 mt-0.5">storefront</span>
+              <span className="text-on-surface-variant">
+                {bn
+                  ? 'ডেলিভারিতে পাওয়া সব ক্যাশ প্রতিদিন অফিসে জমা দিন।'
+                  : 'Deposit all cash collected on deliveries at the office every day.'}
+              </span>
+            </p>
+            <p className="flex items-start gap-2.5">
+              <span className="material-symbols-outlined text-primary text-[19px] shrink-0 mt-0.5">calendar_month</span>
+              <span className="text-on-surface-variant">
+                {bn
+                  ? 'মাসের শেষে অফিস থেকে আপনার জমা হওয়া পুরো পাওনা একসাথে পরিশোধ করা হবে।'
+                  : 'At month-end the office pays your full accumulated balance in one settlement.'}
+              </span>
             </p>
           </div>
-
-          <div className="space-y-2">
-            <label className="font-label-md text-label-md text-on-surface font-semibold block">
-              {bn ? 'পেমেন্ট মাধ্যম বেছে নিন / Select Method' : 'Select Method'}
-            </label>
-            <div className="grid grid-cols-2 gap-2.5">
-              {METHODS.map(m => {
-                const selected = method === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setMethod(m.id)}
-                    className={clsx(
-                      'flex flex-col p-3 rounded-xl text-left transition-all',
-                      selected ? 'border-2 border-primary bg-primary/5 shadow-sm' : 'border border-outline-variant bg-surface-container-lowest',
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2 w-full">
-                      <span className={clsx('w-8 h-8 rounded-lg text-white flex items-center justify-center font-extrabold text-[13px] tracking-tighter shadow-sm', m.tileClass)}>
-                        {m.tile}
-                      </span>
-                      {selected ? (
-                        <span className="w-5 h-5 rounded-full bg-primary flex items-center justify-center text-white">
-                          <span className="material-symbols-outlined text-[14px] font-bold">check</span>
-                        </span>
-                      ) : (
-                        <span className="w-5 h-5 rounded-full border border-outline-variant" />
-                      )}
-                    </div>
-                    <span className="font-label-lg text-label-lg font-bold text-on-surface">{bn ? m.labelBn : m.labelEn} / {m.labelEn}</span>
-                    <span className="font-bilingual-sub text-[10px] text-on-surface-variant mt-0.5">{bn ? 'ব্যক্তিগত নম্বর (Personal)' : 'Personal number'}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="font-label-md text-label-md text-on-surface font-semibold flex items-center justify-between">
-              <span>{bn ? 'বিকাশ/নগদ নম্বর / bKash/Nagad number' : 'bKash/Nagad number'}</span>
-              <span className="text-primary font-bilingual-sub text-[11px] font-bold flex items-center gap-0.5">
-                <span className="material-symbols-outlined text-[14px]">verified_user</span> {bn ? 'ভেরিফাইড' : 'Verified'}
-              </span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant text-[20px]">phone_android</span>
-              <input
-                type="tel"
-                value={account}
-                onChange={e => setAccount(e.target.value)}
-                placeholder="01XXXXXXXXX"
-                className="w-full h-12 pl-10 pr-24 bg-surface-container-low/50 rounded-xl border border-outline-variant text-on-surface font-body-lg font-semibold tracking-wide focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-label-sm text-label-sm">
-                Personal
-              </span>
-            </div>
-            <p className="font-bilingual-sub text-bilingual-sub text-on-surface-variant flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px] text-primary">check_circle</span>
-              {bn ? 'আপনার নিবন্ধিত রাইডার ব্যক্তিগত অ্যাকাউন্ট ভেরিফাইড করা আছে।' : 'Your registered personal account is verified.'}
+          <div className="p-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 flex items-start gap-2">
+            <span className="material-symbols-outlined text-secondary text-[18px] shrink-0 mt-0.5">admin_panel_settings</span>
+            <p className="font-bilingual-sub text-bilingual-sub text-on-surface-variant leading-relaxed">
+              <strong className="text-on-surface">{bn ? 'দ্রষ্টব্য:' : 'Note:'}</strong>{' '}
+              {bn ? 'হিসাবে কোনো গরমিল দেখলে অফিসে জানান / Report any mismatch to the office' : 'Report any mismatch to the office.'}
             </p>
-          </div>
-
-          <div className="pt-2 space-y-2">
-            {justRequested && (
-              <p className="text-label-md text-success flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                {bn ? 'অনুরোধ পাঠানো হয়েছে — অনুমোদন হলে টাকা পাঠিয়ে দেওয়া হবে।' : 'Request sent — money will be sent once approved.'}
-              </p>
-            )}
-            <button
-              onClick={submitRequest}
-              disabled={!amountNum || amountNum <= 0 || !account.trim()}
-              className="w-full h-14 bg-primary text-on-primary rounded-full font-label-lg text-[16px] font-bold flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-            >
-              <span>{bn ? 'রিকোয়েস্ট পাঠান / Send request' : 'Send request'}</span>
-              <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
-            </button>
-            <div className="p-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 flex items-start gap-2">
-              <span className="material-symbols-outlined text-secondary text-[18px] shrink-0 mt-0.5">admin_panel_settings</span>
-              <p className="font-bilingual-sub text-bilingual-sub text-on-surface-variant leading-relaxed">
-                <strong className="text-on-surface">{bn ? 'দ্রষ্টব্য:' : 'Note:'}</strong>{' '}
-                {bn ? 'অ্যাডমিন ভেরিফাই করে সরাসরি আপনার নম্বরে টাকা পাঠাবেন / Admin pays directly via bKash/Nagad' : 'Admin verifies and pays directly to your number via bKash/Nagad.'}
-              </p>
-            </div>
           </div>
         </section>
-
         {/* Previous requests (r2.4) */}
         <section className="space-y-3 mt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-[20px]">history</span>
-              <h2 className="font-headline-sm text-[16px] font-bold text-on-surface">{bn ? 'আগের রিকোয়েস্ট / Previous requests' : 'Previous requests'}</h2>
+              <h2 className="font-headline-sm text-[16px] font-bold text-on-surface">{bn ? 'পেমেন্ট ইতিহাস / Payment history' : 'Payment history'}</h2>
             </div>
             <span className="font-bilingual-sub text-bilingual-sub text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full font-semibold">
               {bn ? `মোট ${toBnDigits(myRequests.length, lang)}টি লেনদেন` : `${myRequests.length} total`}
@@ -555,12 +465,14 @@ export default function RiderEarningsScreen() {
           </div>
           {myRequests.length === 0 ? (
             <p className="text-body-md text-on-surface-variant py-4 text-center">
-              {bn ? 'এখনো কোনো পেমেন্ট অনুরোধ নেই।' : 'No payout requests yet.'}
+              {bn ? 'এখনো কোনো পেমেন্ট হয়নি।' : 'No payments yet.'}
             </p>
           ) : (
             <div className="space-y-2.5">
               {myRequests.map(r => {
-                const meta = METHODS.find(m => m.id === r.method) ?? METHODS[0];
+                const meta = r.method === 'office'
+                  ? { labelBn: 'অফিস (মাসিক সেটেলমেন্ট)', labelEn: 'Office (monthly settlement)', dotClass: 'bg-primary' }
+                  : METHODS.find(m => m.id === r.method) ?? METHODS[0];
                 const reqDay = dayKey(r.requestedAt);
                 return (
                   <div
