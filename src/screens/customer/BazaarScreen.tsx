@@ -4,7 +4,7 @@ import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { CATEGORY_INFO } from '../../data/products';
 import { PRODUCT_IMAGES } from '../../data/images';
-import { fmtTk, toBnDigits } from '../../services/orderUtils';
+import { fmtTk, toBnDigits, cartLineForPrice, primaryCartLine } from '../../services/orderUtils';
 import type { CartItem, Product, ProductCategory } from '../../types';
 
 // ── Stitch 10 · Bazaar Catalogue ──────────────────────────────
@@ -28,8 +28,9 @@ function CatalogueRow({ product }: { product: Product }) {
   const lang = state.lang;
   const bn = lang === 'bn';
 
-  const cartItem = state.cart.find(i => i.productId === product.id && i.source === 'bazaar');
-  const qty = cartItem?.quantity ?? 0;
+  // Stepper acts on the real cart line (pack / price-split safe).
+  const line = cartLineForPrice(state.cart, product.id, product.approxPrice) ?? primaryCartLine(state.cart, product.id);
+  const qty = line?.quantity ?? 0;
   const name = bn ? product.nameBn : product.nameEn;
   const subName = bn ? product.nameEn : product.nameBn;
   const unit = bn ? product.unit : product.unitEn;
@@ -51,9 +52,10 @@ function CatalogueRow({ product }: { product: Product }) {
   };
 
   const updateQty = (delta: number) => {
-    const newQty = qty + delta;
-    if (newQty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: product.id });
-    else dispatch({ type: 'UPDATE_CART_QTY', id: product.id, qty: newQty });
+    if (!line) return;
+    const newQty = line.quantity + delta;
+    if (newQty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: line.id });
+    else dispatch({ type: 'UPDATE_CART_QTY', id: line.id, qty: newQty });
   };
 
   return (

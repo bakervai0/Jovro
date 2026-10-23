@@ -86,7 +86,8 @@ export default function AiScreen() {
     setIsTyping(true);
     await aiThinkingDelay();
     const reply = respondToMessage(text, {
-      orders: state.orders,
+      // Reorder / order intents only ever see the customer's own orders.
+      orders: state.orders.filter(o => o.customerId === state.user?.id),
       cartProductIds: state.cart.map(i => i.productId ?? i.id),
     });
     if (reply.added.length > 0) addLinesToCart(reply.added);

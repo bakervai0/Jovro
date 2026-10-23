@@ -8,7 +8,7 @@ import { EarnMoneyCard } from '../../components/shared/EarnMoneyCard';
 import { FooterBlock } from '../../components/shared/FooterBlock';
 import { CATEGORY_INFO } from '../../data/products';
 import { CATEGORY_IMAGES, HOME_ASSETS, PRODUCT_IMAGES, RESTAURANT_IMAGES } from '../../data/images';
-import { fmtTk, toBnDigits } from '../../services/orderUtils';
+import { fmtTk, toBnDigits, dhakaMinutesNow, cartLineForPrice, primaryCartLine } from '../../services/orderUtils';
 import type { CartItem, CartItemSource, Product, Restaurant } from '../../types';
 
 // ── Service windows (06:00–13:30 + 16:30–22:30) ───────────────
@@ -37,10 +37,13 @@ function flashTarget(now: Date): Date {
   return t;
 }
 
-/** "Next delivery slot" label for the header strip. */
+/** "Next delivery slot" label for the header strip (Dhaka time).
+ * Before the morning window closes → today's morning slot; any
+ * time before the evening window closes (incl. the 13:30–16:30
+ * break) → today's evening slot; after 22:30 → tomorrow morning. */
 function nextSlotLabel(now: Date): { bn: string; en: string } {
-  const mins = now.getHours() * 60 + now.getMinutes();
-  if (mins < SERVICE_WINDOWS[1].start) {
+  const mins = dhakaMinutesNow(now);
+  if (mins < SERVICE_WINDOWS[0].end) {
     return { bn: 'আজ সকাল ৬:০০–দুপুর ১:৩০', en: 'Today 6:00 AM–1:30 PM' };
   }
   if (mins < SERVICE_WINDOWS[1].end) {
@@ -364,7 +367,7 @@ function HeroSlider() {
 // ── Active Order (functional extra, under the hero slider) ─────
 function ActiveOrderBanner() {
   const { state } = useApp();
-  const active = state.orders.find(o => ['pending', 'confirmed', 'buying', 'on-the-way'].includes(o.status));
+  const active = state.orders.find(o => o.customerId === state.user?.id && ['pending', 'confirmed', 'buying', 'on-the-way'].includes(o.status));
   if (!active) return null;
   return (
     <div className="px-margin">
@@ -477,8 +480,10 @@ function CategoryRail() {
 // ── Shared add/stepper wiring (mirrors ProductCard) ────────────
 function useCartActions(product: Product, price: number) {
   const { state, dispatch } = useApp();
-  const cartItem = state.cart.find(i => i.productId === product.id);
-  const qty = cartItem?.quantity ?? 0;
+  // Act on the line at THIS price (flash vs regular stay separate);
+  // fall back to the product's primary line (pack variants incl.).
+  const line = cartLineForPrice(state.cart, product.id, price) ?? primaryCartLine(state.cart, product.id);
+  const qty = line?.quantity ?? 0;
 
   const addToCart = () => {
     const item: CartItem = {
@@ -495,9 +500,10 @@ function useCartActions(product: Product, price: number) {
     dispatch({ type: 'ADD_TO_CART', item });
   };
   const updateQty = (delta: number) => {
-    const newQty = qty + delta;
-    if (newQty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: product.id });
-    else dispatch({ type: 'UPDATE_CART_QTY', id: product.id, qty: newQty });
+    if (!line) return;
+    const newQty = line.quantity + delta;
+    if (newQty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: line.id });
+    else dispatch({ type: 'UPDATE_CART_QTY', id: line.id, qty: newQty });
   };
   return { qty, addToCart, updateQty };
 }

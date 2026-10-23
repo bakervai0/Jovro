@@ -5,7 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { BottomSheet } from '../../components/ui/BottomSheet';
 import { placeOrder } from '../../services/orders';
 import { PRODUCT_IMAGES } from '../../data/images';
-import { fmtTk, toBnDigits, SLOT_META } from '../../services/orderUtils';
+import { fmtTk, toBnDigits, SLOT_META, dhakaMinutesNow, defaultSlotForNow } from '../../services/orderUtils';
 import type { CartItem, Order, Product, TimeSlot } from '../../types';
 
 // ── Stitch 14 + 15 + 16 · Cart → Checkout → Success ───────────
@@ -23,7 +23,10 @@ const TIME_SLOTS: {
   { id: 'evening', icon: 'nightlight', tagBn: 'সন্ধ্যার বাজার', tagEn: 'Evening bazaar' },
 ];
 
-const SLOT_END: Record<TimeSlot, number> = { morning: 13 * 60 + 30, afternoon: 13 * 60 + 30, evening: 22 * 60 + 30 };
+// Slot ordering closes with the service windows: morning run
+// 13:30, midday run when the evening window opens (16:30),
+// evening run 22:30.
+const SLOT_END: Record<TimeSlot, number> = { morning: 13 * 60 + 30, afternoon: 16 * 60 + 30, evening: 22 * 60 + 30 };
 
 const REPLACEMENT_OPTIONS = [
   { id: 'similar', emoji: '🔄', bn: 'কাছাকাছি জিনিস দিয়ে বদলে দিন', en: 'Replace with a similar item' },
@@ -145,12 +148,30 @@ function CartRow({ item }: { item: CartItem }) {
   );
 }
 
+/** Delivery fee for this order: follows the saved default
+ * address's area (free-text / edited addresses fall back to the
+ * selected area), and drops to 0 when a pass or a free-delivery
+ * promo waives it. Shared by the cart bill + checkout so the fee
+ * shown is the fee charged. */
+function useDeliveryFee(addressEdited = false) {
+  const { state, cartDeliveryFeeRaw, cartFeeWaiver, currentArea } = useApp();
+  const defaultAddress = state.addresses.find(a => a.isDefault);
+  const savedArea = !addressEdited && defaultAddress
+    ? state.areas.find(a => a.id === defaultAddress.areaId)
+    : undefined;
+  const feeArea = savedArea ?? currentArea;
+  const feeBase = savedArea?.fee ?? cartDeliveryFeeRaw;
+  const fee = cartFeeWaiver ? 0 : feeBase;
+  return { fee, feeBase, feeArea, waivedBy: cartFeeWaiver, defaultAddress };
+}
+
 /** Bill rows shared by cart (Stitch 14) — checkout has its own variant. */
 function BillRows({ showPromoLine = true }: { showPromoLine?: boolean }) {
-  const { state, cartTotal, cartDeliveryFee, cartDiscount, cartFinal, currentArea } = useApp();
+  const { state, cartTotal, cartDiscount } = useApp();
+  const { fee, feeBase, feeArea, waivedBy } = useDeliveryFee();
   const bn = state.lang === 'bn';
   const promo = state.appliedPromo;
-  const freeDelivery = promo?.discountType === 'free-delivery' && cartDiscount > 0;
+  const total = cartTotal + fee - cartDiscount;
   return (
     <>
       <div className="flex justify-between items-center text-body-md font-body-md text-on-surface">
@@ -160,22 +181,31 @@ function BillRows({ showPromoLine = true }: { showPromoLine?: boolean }) {
       <div className="flex justify-between items-center text-body-md font-body-md text-on-surface">
         <div className="flex items-center gap-1.5">
           <span>{bn ? 'ডেলিভারি চার্জ' : 'Delivery charge'}</span>
-          {currentArea && (
+          {feeArea && (
             <span className="text-label-sm font-label-sm text-secondary-container bg-secondary-fixed/50 px-1.5 py-0.5 rounded">
-              {bn ? currentArea.nameBn : currentArea.nameEn}
+              {bn ? feeArea.nameBn : feeArea.nameEn}
             </span>
           )}
         </div>
-        {freeDelivery ? (
+        {waivedBy ? (
           <span className="flex items-center gap-1.5">
-            <span className="line-through text-outline text-body-sm">{fmtTk(cartDeliveryFee, state.lang)}</span>
+            <span className="line-through text-outline text-body-sm">{fmtTk(feeBase, state.lang)}</span>
             <span className="text-[#1D9D57] font-bold">{fmtTk(0, state.lang)} ({bn ? 'ফ্রি' : 'Free'})</span>
           </span>
         ) : (
-          <span className="font-semibold">{fmtTk(cartDeliveryFee, state.lang)}</span>
+          <span className="font-semibold">{fmtTk(fee, state.lang)}</span>
         )}
       </div>
-      {showPromoLine && promo && cartDiscount > 0 && !freeDelivery && (
+      {waivedBy === 'pass' && (
+        <div className="flex justify-between items-center bg-[#E8F5E9] px-2.5 py-1.5 rounded-lg text-primary text-body-sm font-label-lg border border-primary/20">
+          <div className="flex items-center gap-1">
+            <span className="material-symbols-outlined text-[18px]">card_membership</span>
+            <span>🎉 {bn ? 'ডেলিভারি পাস — ফ্রি ডেলিভারি' : 'Delivery Pass — Free Delivery'}</span>
+          </div>
+          <span className="font-bold">{bn ? 'ফি মওকুফ' : 'Fee waived'}</span>
+        </div>
+      )}
+      {showPromoLine && promo && cartDiscount > 0 && (
         <div className="flex justify-between items-center bg-[#E8F5E9] px-2.5 py-1.5 rounded-lg text-primary text-body-sm font-label-lg border border-primary/20">
           <div className="flex items-center gap-1">
             <span className="material-symbols-outlined text-[18px]">redeem</span>
@@ -188,16 +218,16 @@ function BillRows({ showPromoLine = true }: { showPromoLine?: boolean }) {
       <div className="flex justify-between items-center">
         <div>
           <span className="text-headline-md font-headline-md font-bold text-on-surface">{bn ? 'মোট বিল' : 'Total bill'}</span>
-          <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">Total Payable (Cash/bKash)</p>
+          <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">Total Payable (Cash on Delivery)</p>
         </div>
-        <span className="text-headline-md font-headline-md font-bold text-primary">{fmtTk(cartFinal, state.lang)}</span>
+        <span className="text-headline-md font-headline-md font-bold text-primary">{fmtTk(total, state.lang)}</span>
       </div>
     </>
   );
 }
 
 export default function CartScreen() {
-  const { state, dispatch, cartTotal, cartCount, cartDeliveryFee, cartDiscount, cartFinal, validatePromo, currentArea } = useApp();
+  const { state, dispatch, cartTotal, cartCount, cartDeliveryFeeRaw, cartDiscount, validatePromo, currentArea } = useApp();
   const navigate = useNavigate();
   const lang = state.lang;
   const bn = lang === 'bn';
@@ -220,8 +250,9 @@ export default function CartScreen() {
   const [custName, setCustName] = useState(state.user?.name ?? '');
   const [editingName, setEditingName] = useState(false);
   const [addressText, setAddressText] = useState(defaultAddress?.fullAddress ?? '');
+  const [addressEdited, setAddressEdited] = useState(false);
   const [orderNote, setOrderNote] = useState('');
-  const [timeSlot, setTimeSlot] = useState<TimeSlot>('morning');
+  const [timeSlot, setTimeSlot] = useState<TimeSlot>(() => defaultSlotForNow());
   const [showAiCheckout, setShowAiCheckout] = useState(true);
   const [isPlacing, setIsPlacing] = useState(false);
 
@@ -237,6 +268,22 @@ export default function CartScreen() {
       items,
     }));
   }, [state.cart, state.restaurants]);
+
+  // Delivery fee for THIS order (saved-address area, pass/promo
+  // waiver) — one source for cart, checkout and the placed order.
+  const { fee: deliveryFee, feeBase, waivedBy: feeWaiver } = useDeliveryFee(addressEdited);
+  const checkoutAreaId = !addressEdited && defaultAddress ? defaultAddress.areaId : state.selectedAreaId;
+  const displayFinal = cartTotal + deliveryFee - cartDiscount;
+  const totalSavings = cartDiscount + (feeWaiver ? feeBase : 0);
+
+  // Per-restaurant minimum-order enforcement.
+  const minOrderIssues = restaurantGroups
+    .map(g => {
+      const subtotal = g.items.reduce((s, i) => s + i.price * i.quantity, 0);
+      return { restaurant: g.restaurant, subtotal, shortBy: (g.restaurant?.minOrder ?? 0) - subtotal };
+    })
+    .filter(x => x.restaurant && x.shortBy > 0);
+  const minShortBy = new Map(minOrderIssues.map(x => [x.restaurant!.id, x.shortBy]));
 
   const suggestions = useMemo(() => {
     const inCart = new Set(state.cart.map(i => i.productId).filter(Boolean));
@@ -266,16 +313,16 @@ export default function CartScreen() {
   };
 
   const fastestSlot = useMemo<TimeSlot>(() => {
-    const now = new Date();
-    const mins = now.getHours() * 60 + now.getMinutes();
+    const mins = dhakaMinutesNow();
     for (const s of TIME_SLOTS) {
       if (mins < SLOT_END[s.id] && !(state.isSlotFull && s.id === 'morning')) return s.id;
     }
-    return 'evening';
+    return 'morning'; // after the last run → tomorrow's first run
   }, [state.isSlotFull]);
 
   const handlePlace = async () => {
     if (cartCount === 0) return;
+    if (minOrderIssues.length > 0) return; // restaurant minimum not met
     const noteParts = [
       customRequest.trim(),
       orderNote.trim(),
@@ -287,9 +334,9 @@ export default function CartScreen() {
     setIsPlacing(true);
     const result = await placeOrder(
       state.cart,
-      state.selectedAreaId,
+      checkoutAreaId,
       addressText.trim() || defaultAddress?.fullAddress || '',
-      cartDeliveryFee,
+      deliveryFee,
       state.appliedPromo?.code ?? null,
       cartDiscount,
       paidMethod,
@@ -407,7 +454,7 @@ export default function CartScreen() {
               </div>
             </div>
             <span className="px-2.5 py-1 bg-[#FD761A]/10 text-[#C2410C] font-label-sm text-label-sm rounded-full font-bold border border-[#F97316]/30 shrink-0">
-              {fmtTk(cartDeliveryFee, lang)} {bn ? 'চার্জ' : 'charge'}
+              {fmtTk(feeBase, lang)} {bn ? 'চার্জ' : 'charge'}
             </span>
           </div>
 
@@ -453,7 +500,7 @@ export default function CartScreen() {
   // ── STEP: CHECKOUT (Stitch 15 + 15b + 15c) ──────────────────
   if (step === 'checkout') {
     const promo = state.appliedPromo;
-    const freeDelivery = promo?.discountType === 'free-delivery' && cartDiscount > 0;
+    const feeWaived = feeWaiver !== null;
     return (
       <div className="flex-1 flex flex-col bg-background relative overflow-hidden">
         <header className="sticky top-0 z-40 bg-surface-container-lowest/95 backdrop-blur-md px-margin py-3 border-b border-outline-variant/30 flex items-center justify-between shadow-sm">
@@ -538,7 +585,7 @@ export default function CartScreen() {
                   <div className="flex flex-wrap items-center gap-2 mt-1.5">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-[#FFF7ED] text-[#C2410C] border border-[#F97316]/30">
                       <span className="material-symbols-outlined text-[12px] mr-1">moped</span>
-                      {bn ? 'ডেলিভারি চার্জ' : 'Delivery charge'} {fmtTk(cartDeliveryFee, lang)}
+                      {bn ? 'ডেলিভারি চার্জ' : 'Delivery charge'} {fmtTk(deliveryFee, lang)}
                     </span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-[#E8F5E9] text-primary font-semibold">
                       <span className={clsx('w-1.5 h-1.5 rounded-full bg-primary mr-1', state.isServiceOpen && 'animate-pulse')} />
@@ -567,7 +614,8 @@ export default function CartScreen() {
             <p className="text-label-sm font-label-sm text-outline">{bn ? 'বাসা, রাস্তা বা পরিচিত জায়গা লিখুন' : 'Write house, road or a known landmark'}</p>
             <div className="relative mt-0.5">
               <textarea
-                id="checkout-address" rows={2} value={addressText} onChange={e => setAddressText(e.target.value)}
+                id="checkout-address" rows={2} value={addressText}
+                onChange={e => { setAddressText(e.target.value); setAddressEdited(e.target.value !== (defaultAddress?.fullAddress ?? '')); }}
                 placeholder={bn ? 'বাসা নং, রোড বা পরিচিত স্থান লিখুন' : 'House no, road or landmark'}
                 className="w-full text-body-md font-body-md text-on-surface bg-surface-container-low/50 rounded-lg border border-outline-variant/50 p-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
               />
@@ -748,16 +796,25 @@ export default function CartScreen() {
               </div>
               <div className="flex justify-between items-center text-on-surface-variant">
                 <span>{bn ? `ডেলিভারি চার্জ (${currentArea ? (bn ? currentArea.nameBn : currentArea.nameEn) : ''})` : 'Delivery charge'} <span className="text-bilingual-sub font-bilingual-sub block text-outline">Delivery charge</span></span>
-                {freeDelivery ? (
+                {feeWaived ? (
                   <span className="flex items-center gap-1.5">
-                    <span className="line-through text-outline font-medium text-body-sm">{fmtTk(cartDeliveryFee, lang)}</span>
+                    <span className="line-through text-outline font-medium text-body-sm">{fmtTk(feeBase, lang)}</span>
                     <span className="text-[#1D9D57] font-bold">{fmtTk(0, lang)}</span>
                   </span>
                 ) : (
-                  <span className="font-semibold text-on-surface">{fmtTk(cartDeliveryFee, lang)}</span>
+                  <span className="font-semibold text-on-surface">{fmtTk(deliveryFee, lang)}</span>
                 )}
               </div>
-              {promo && cartDiscount > 0 && !freeDelivery && (
+              {feeWaiver === 'pass' && (
+                <div className="flex justify-between items-center text-[#1D9D57]">
+                  <div className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[16px]">card_membership</span>
+                    <span className="font-bold">{bn ? 'ডেলিভারি পাস — ফ্রি ডেলিভারি' : 'Delivery Pass — Free Delivery'}</span>
+                  </div>
+                  <span className="font-bold">{bn ? 'ফি মওকুফ' : 'Fee waived'}</span>
+                </div>
+              )}
+              {promo && cartDiscount > 0 && (
                 <div className="flex justify-between items-center text-[#1D9D57]">
                   <div className="flex items-center gap-1">
                     <span className="material-symbols-outlined text-[16px]">local_activity</span>
@@ -773,12 +830,12 @@ export default function CartScreen() {
                   <span className="text-bilingual-sub font-bilingual-sub block text-on-surface-variant">Total payable</span>
                 </div>
                 <div className="text-right">
-                  {cartDiscount > 0 && (
-                    <span className="text-body-sm font-medium line-through text-outline block -mb-0.5">{fmtTk(cartTotal + cartDeliveryFee, lang)}</span>
+                  {totalSavings > 0 && (
+                    <span className="text-body-sm font-medium line-through text-outline block -mb-0.5">{fmtTk(cartTotal + feeBase, lang)}</span>
                   )}
-                  <span className="text-headline-sm font-headline-sm font-bold text-primary">{fmtTk(cartFinal, lang)}</span>
-                  {cartDiscount > 0 && (
-                    <span className="text-label-sm font-label-sm text-[#1D9D57] font-bold block">{bn ? 'মোট সাশ্রয়' : 'You save'} {fmtTk(cartDiscount, lang)}</span>
+                  <span className="text-headline-sm font-headline-sm font-bold text-primary">{fmtTk(displayFinal, lang)}</span>
+                  {totalSavings > 0 && (
+                    <span className="text-label-sm font-label-sm text-[#1D9D57] font-bold block">{bn ? 'মোট সাশ্রয়' : 'You save'} {fmtTk(totalSavings, lang)}</span>
                   )}
                 </div>
               </div>
@@ -830,8 +887,18 @@ export default function CartScreen() {
 
         {/* STEP 10 · Sticky CTA */}
         <div className="px-margin py-3 bg-surface-container-lowest/95 backdrop-blur-md border-t border-outline-variant/30 shadow-[0_-4px_16px_rgba(43,45,47,0.08)]">
+          {minOrderIssues.length > 0 && (
+            <p className="mb-2 flex items-start gap-1.5 text-body-sm font-body-sm text-[#C2410C]">
+              <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">warning</span>
+              <span>
+                {bn
+                  ? `${minOrderIssues.map(x => x.restaurant ? (bn ? x.restaurant.nameBn : x.restaurant.nameEn) : '').join(', ')} — সর্বনিম্ন অর্ডার পূরণ হয়নি। কার্টে ফিরে আরও ${fmtTk(Math.max(...minOrderIssues.map(x => x.shortBy)), lang)} পর্যন্ত যোগ করুন।`
+                  : `Minimum order not met for ${minOrderIssues.map(x => x.restaurant?.nameEn ?? '').join(', ')} — go back to the cart and add more.`}
+              </span>
+            </p>
+          )}
           <button
-            type="button" onClick={handlePlace} disabled={isPlacing}
+            type="button" onClick={handlePlace} disabled={isPlacing || minOrderIssues.length > 0}
             className="w-full h-12 bg-primary hover:bg-[#15803D] active:scale-[0.98] transition-all rounded-full flex items-center justify-between px-6 text-white shadow-md disabled:opacity-60"
           >
             <span className="flex flex-col text-left">
@@ -839,7 +906,7 @@ export default function CartScreen() {
               <span className="text-[10px] text-white/80 font-medium">{bn ? 'ক্যাশ অন ডেলিভারি' : 'Cash on delivery'}</span>
             </span>
             <span className="flex items-center gap-1.5 font-bold text-headline-sm">
-              <span>• {fmtTk(cartFinal, lang)}</span>
+              <span>• {fmtTk(displayFinal, lang)}</span>
               {isPlacing
                 ? <span className="material-symbols-outlined text-[22px] animate-spin">progress_activity</span>
                 : <span className="material-symbols-outlined text-[22px]">arrow_forward</span>}
@@ -886,7 +953,7 @@ export default function CartScreen() {
             </span>
           </span>
           <span className="text-label-sm font-label-sm bg-surface-container-lowest text-primary font-bold px-2 py-0.5 rounded-full border border-primary/20 shrink-0">
-            {fmtTk(cartDeliveryFee, lang)} {bn ? 'চার্জ' : 'charge'}
+            {fmtTk(cartDeliveryFeeRaw, lang)} {bn ? 'চার্জ' : 'charge'}
           </span>
         </button>
       </header>
@@ -944,6 +1011,21 @@ export default function CartScreen() {
               </span>
             </div>
             {items.map(item => <CartRow key={item.id} item={item} />)}
+            {restaurant && (minShortBy.get(restaurant.id) ?? 0) > 0 && (
+              <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-[#FFF7ED] border border-[#F97316]/40 px-3 py-2.5">
+                <span className="material-symbols-outlined text-[#C2410C] text-[18px] shrink-0 mt-0.5">warning</span>
+                <p className="text-body-sm font-body-sm text-[#C2410C] leading-snug">
+                  {bn
+                    ? `এই রেস্টুরেন্টের সর্বনিম্ন অর্ডার ${fmtTk(restaurant.minOrder, lang)} — আরও ${fmtTk(minShortBy.get(restaurant.id)!, lang)} যোগ করুন, না হলে অর্ডার করা যাবে না।`
+                    : `Minimum order for this restaurant is ${fmtTk(restaurant.minOrder, lang)} — add ${fmtTk(minShortBy.get(restaurant.id)!, lang)} more, otherwise you cannot place the order.`}
+                  <span className="block text-bilingual-sub font-bilingual-sub opacity-80">
+                    {bn
+                      ? `Minimum order ${fmtTk(restaurant.minOrder, lang)} — add ${fmtTk(minShortBy.get(restaurant.id)!, lang)} more`
+                      : `সর্বনিম্ন অর্ডার ${fmtTk(restaurant.minOrder, lang)} — আরও ${fmtTk(minShortBy.get(restaurant.id)!, lang)} যোগ করুন`}
+                  </span>
+                </p>
+              </div>
+            )}
           </section>
         ))}
 
@@ -1209,7 +1291,7 @@ export default function CartScreen() {
               {bn ? `${toBnDigits(cartCount, lang)}টি আইটেম` : `${cartCount} items`}
             </span>
           </div>
-          <span className="text-headline-sm font-headline-sm font-bold text-primary">{fmtTk(cartFinal, lang)}</span>
+          <span className="text-headline-sm font-headline-sm font-bold text-primary">{fmtTk(displayFinal, lang)}</span>
         </div>
         <button
           type="button" onClick={() => { setTimeSlot(fastestSlot); setStep('checkout'); window.scrollTo({ top: 0 }); }}
@@ -1253,7 +1335,8 @@ function SuccessView({ order, paymentMethod }: { order: Order; paymentMethod: 'c
   const bn = lang === 'bn';
 
   const area = state.areas.find(a => a.id === order.deliveryAreaId);
-  const rider = state.riders.find(r => r.id === order.riderId) ?? state.riders.find(r => r.status === 'active');
+  // Only show a courier who is actually assigned to THIS order.
+  const rider = order.riderId ? state.riders.find(r => r.id === order.riderId) : undefined;
   const slot = SLOT_META[order.timeSlot];
   const payLabel = paymentMethod === 'bkash'
     ? (bn ? 'বিকাশ (bKash)' : 'bKash')
@@ -1385,6 +1468,31 @@ function SuccessView({ order, paymentMethod }: { order: Order; paymentMethod: 'c
             <div className="bg-surface-container-low rounded-lg p-2.5 flex items-center gap-2 text-on-surface-variant">
               <span className="material-symbols-outlined text-[18px] text-primary">directions_bike</span>
               <span className="text-body-sm font-body-sm">{bn ? 'অর্ডার প্রস্তুত হলে সাইকেল নিয়ে রওনা দেবেন' : 'Will set off once the order is ready'}</span>
+            </div>
+          </section>
+        )}
+
+        {/* Courier pending card — no rider assigned yet */}
+        {!rider && (
+          <section className="bg-surface-container-lowest rounded-xl p-space-md border border-outline-variant/30 shadow-sm flex flex-col gap-space-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-label-sm font-label-sm uppercase tracking-wider text-on-surface-variant font-bold">{bn ? 'কুরিয়ার নির্ধারণ বাকি' : 'Courier assignment pending'}</span>
+              <span className="inline-flex items-center gap-1 text-bilingual-sub font-bilingual-sub text-[#C2410C] bg-[#FFF7ED] px-2 py-0.5 rounded-full font-semibold border border-[#F97316]/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#F97316] animate-pulse" /> {bn ? 'অপেক্ষমাণ' : 'Pending'}
+              </span>
+            </div>
+            <div className="flex items-center gap-space-md pt-1">
+              <div className="relative w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-outline-variant/40 bg-surface-container flex items-center justify-center">
+                <span className="material-symbols-outlined text-[26px] text-outline">pedal_bike</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-label-lg font-label-lg text-on-surface">
+                  {bn ? 'রাইডার শীঘ্রই নির্ধারণ করা হবে' : 'A rider will be assigned shortly'}
+                </h2>
+                <p className="text-body-sm font-body-sm text-on-surface-variant mt-0.5">
+                  {bn ? 'অর্ডার নিশ্চিত হলেই কাছের রাইডারকে দায়িত্ব দেওয়া হবে — আপডেট এখানেই পাবেন।' : 'A nearby rider will be assigned as soon as your order is confirmed — watch this space for updates.'}
+                </p>
+              </div>
             </div>
           </section>
         )}

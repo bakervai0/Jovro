@@ -591,13 +591,13 @@ function EditProfileView({ onBack, onPassword }: { onBack: () => void; onPasswor
   const user = state.user;
 
   const [name, setName] = useState(user?.nameBn || user?.name || '');
-  const [altMobile, setAltMobile] = useState('');
+  const [altMobile, setAltMobile] = useState(user?.altMobile ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [saved, setSaved] = useState(false);
 
   const save = () => {
     if (!user) return;
-    dispatch({ type: 'UPDATE_PROFILE', user: { ...user, name: name.trim() || user.name, nameBn: name.trim() || user.nameBn, email: email.trim() || undefined } });
+    dispatch({ type: 'UPDATE_PROFILE', user: { ...user, name: name.trim() || user.name, nameBn: name.trim() || user.nameBn, altMobile: altMobile.trim() || undefined, email: email.trim() || undefined } });
     setSaved(true);
     setTimeout(() => { setSaved(false); onBack(); }, 900);
   };

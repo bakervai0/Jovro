@@ -60,7 +60,8 @@ export default function OrdersScreen() {
   const [favOrders, setFavOrders] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
-  const orders = state.orders;
+  // Customers only ever see their own orders.
+  const orders = state.orders.filter(o => o.customerId === state.user?.id);
   const activeOrders = useMemo(() => orders.filter(o => ACTIVE.includes(o.status)), [orders]);
   const completedOrders = useMemo(() => orders.filter(o => COMPLETED.includes(o.status)), [orders]);
   const cancelledOrders = useMemo(() => orders.filter(o => CANCELLED.includes(o.status)), [orders]);
@@ -599,7 +600,7 @@ function EmptyOrders({ bn, offerCode, copied, onCopy }: { bn: boolean; offerCode
             type="button" onClick={onCopy}
             className="mt-2 inline-flex items-center gap-2 bg-surface-container-lowest px-2.5 py-1 rounded border border-dashed border-[#F97316] active:scale-95 transition-transform"
           >
-            <span className="font-label-md text-label-md font-bold tracking-wider text-[#C2410C]">{offerCode ?? 'FIRSTFREE'}</span>
+            <span className="font-label-md text-label-md font-bold tracking-wider text-[#C2410C]">{offerCode}</span>
             <span className="material-symbols-outlined text-[14px] text-outline">{copied ? 'done' : 'content_copy'}</span>
           </button>
         </div>

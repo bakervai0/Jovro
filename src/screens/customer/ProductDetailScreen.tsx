@@ -143,7 +143,6 @@ export default function ProductDetailScreen() {
   };
 
   const handleAddToCart = () => {
-    const existing = state.cart.find(i => i.id === cartId);
     const item: CartItem = {
       id: cartId,
       productId: product.id,
@@ -156,11 +155,10 @@ export default function ProductDetailScreen() {
       isApproxPrice: true,
       note: note.trim() || undefined,
     };
-    if (existing) {
-      dispatch({ type: 'UPDATE_CART_QTY', id: cartId, qty: existing.quantity + qty });
-    } else {
-      dispatch({ type: 'ADD_TO_CART', item });
-    }
+    // The reducer merges by line id + unit price and adds the
+    // chosen quantity, so pack lines and price-split lines stay
+    // correct without a manual existing-line branch here.
+    dispatch({ type: 'ADD_TO_CART', item });
     showToast(bn ? 'কার্টে যোগ করা হয়েছে!' : 'Added to cart!');
   };
 

@@ -21,8 +21,8 @@ export default function ReportScreen() {
   const lang = state.lang;
   const bn = lang === 'bn';
 
-  const myOrders = state.orders.filter(o => o.customerId === state.user?.id);
-  const orders = myOrders.length > 0 ? myOrders : state.orders;
+  // Only the customer's own orders can be reported on — no fallback.
+  const orders = state.orders.filter(o => o.customerId === state.user?.id);
 
   const [orderId, setOrderId] = useState<string>(searchParams.get('order') ?? '');
   const [issueType, setIssueType] = useState<ProblemType | null>(null);
@@ -33,7 +33,7 @@ export default function ReportScreen() {
   const cameraRef = useRef<HTMLInputElement>(null);
 
   const canSubmit = !!orderId && !!issueType;
-  const selectedOrder = state.orders.find(o => o.id === orderId);
+  const selectedOrder = orders.find(o => o.id === orderId);
   const selectedRider = selectedOrder?.riderId
     ? state.riders.find(r => r.id === selectedOrder.riderId)
     : undefined;
@@ -52,7 +52,7 @@ export default function ReportScreen() {
     // Record the report in shared state → it lands in the admin
     // problem-reports inbox (flow 5), and flag the order (H19).
     const ref = `PR-${Date.now().toString().slice(-6)}`;
-    const order = state.orders.find(o => o.id === orderId);
+    const order = orders.find(o => o.id === orderId);
     dispatch({
       type: 'ADD_PROBLEM_REPORT',
       report: {

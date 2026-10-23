@@ -54,14 +54,18 @@ export default function NotificationsScreen() {
   const [filter, setFilter] = useState<'all' | 'orders' | 'offers'>('all');
   const [copied, setCopied] = useState(false);
 
-  const orderCount = state.notifications.filter(n => ORDER_TYPES.includes(n.type)).length;
-  const offerCount = state.notifications.filter(n => !ORDER_TYPES.includes(n.type)).length;
+  // Each user only sees their own notifications + global ones.
+  const myNotifications = state.notifications.filter(n => n.userId === state.user?.id || n.userId === 'all');
+
+  const orderCount = myNotifications.filter(n => ORDER_TYPES.includes(n.type)).length;
+  const offerCount = myNotifications.filter(n => !ORDER_TYPES.includes(n.type)).length;
 
   const filtered = useMemo(() => {
-    if (filter === 'orders') return state.notifications.filter(n => ORDER_TYPES.includes(n.type));
-    if (filter === 'offers') return state.notifications.filter(n => !ORDER_TYPES.includes(n.type));
-    return state.notifications;
-  }, [state.notifications, filter]);
+    if (filter === 'orders') return myNotifications.filter(n => ORDER_TYPES.includes(n.type));
+    if (filter === 'offers') return myNotifications.filter(n => !ORDER_TYPES.includes(n.type));
+    return myNotifications;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.notifications, state.user?.id, filter]);
 
   const todayList = filtered.filter(n => isToday(n.createdAt));
   const earlierList = filtered.filter(n => !isToday(n.createdAt));
@@ -178,7 +182,7 @@ export default function NotificationsScreen() {
   };
 
   const FILTERS = [
-    { id: 'all' as const, bn: `সব (${toBnDigits(state.notifications.length, lang)})`, en: 'All', sub: '/ All' },
+    { id: 'all' as const, bn: `সব (${toBnDigits(myNotifications.length, lang)})`, en: 'All', sub: '/ All' },
     { id: 'orders' as const, bn: `অর্ডার আপডেট (${toBnDigits(orderCount, lang)})`, en: 'Orders', sub: '/ Orders' },
     { id: 'offers' as const, bn: `অফার ও বার্তা (${toBnDigits(offerCount, lang)})`, en: 'Offers', sub: '/ Offers' },
   ];
@@ -233,7 +237,7 @@ export default function NotificationsScreen() {
                 filter === f.id ? 'bg-primary text-on-primary font-bold shadow-sm' : 'bg-surface-container-lowest border border-outline-variant/40 text-on-surface-variant',
               )}
             >
-              {bn ? f.bn : `${f.en} (${f.id === 'all' ? state.notifications.length : f.id === 'orders' ? orderCount : offerCount})`}{' '}
+              {bn ? f.bn : `${f.en} (${f.id === 'all' ? myNotifications.length : f.id === 'orders' ? orderCount : offerCount})`}{' '}
               <span className={clsx('text-[10px]', filter === f.id ? 'text-on-primary/80' : 'text-outline')}>{f.sub}</span>
             </button>
           ))}
@@ -241,7 +245,7 @@ export default function NotificationsScreen() {
       </header>
 
       <div className="flex-1 overflow-y-auto no-scrollbar px-margin py-space-md pb-10">
-        {state.notifications.length === 0 ? (
+        {myNotifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center px-8">
             <span className="material-symbols-outlined text-on-surface-variant/40 text-[56px]">notifications_off</span>
             <p className="text-body-lg font-medium text-on-surface-variant">{bn ? 'কোনো বিজ্ঞপ্তি নেই' : 'No notifications'}</p>

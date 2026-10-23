@@ -13,12 +13,14 @@ import type { Restaurant } from '../../types';
 // shown is the customer's area fee (the app charges by area —
 // the design shows per-restaurant fees).
 
-const FILTERS: { id: string; icon: string; bn: string; en: string; iconClass: string }[] = [
+const FILTERS: { id: string; icon: string; bn: string; en: string; iconClass: string; cuisines?: string[] }[] = [
   { id: 'all', icon: 'restaurant', bn: 'সব রেস্টুরেন্ট (All)', en: 'All Restaurants', iconClass: '' },
   { id: 'বিরিয়ানি', icon: 'rice_bowl', bn: 'বিরিয়ানি ও পোলাও', en: 'Biryani & Polao', iconClass: 'text-secondary' },
   { id: 'ভাত-তরকারি', icon: 'dinner_dining', bn: 'দেশি ভাত-হোটেল', en: 'Deshi Rice Hotels', iconClass: 'text-outline' },
-  { id: 'চা-নাস্তা', icon: 'cake', bn: 'মিষ্টি ও নাস্তা', en: 'Sweets & Snacks', iconClass: 'text-secondary' },
+  // "Sweets & Snacks" covers both sweets shops and snack/drink places.
+  { id: 'চা-নাস্তা', icon: 'cake', bn: 'মিষ্টি ও নাস্তা', en: 'Sweets & Snacks', iconClass: 'text-secondary', cuisines: ['মিষ্টি', 'স্ন্যাকস ও পানীয়'] },
   { id: 'ফাস্ট ফুড', icon: 'fastfood', bn: 'ফাস্টফুড', en: 'Fast Food', iconClass: 'text-tertiary' },
+  { id: 'চাইনিজ', icon: 'ramen_dining', bn: 'চাইনিজ', en: 'Chinese', iconClass: 'text-secondary' },
 ];
 
 function RestaurantCard({ restaurant, fee }: { restaurant: Restaurant; fee: number }) {
@@ -110,7 +112,11 @@ export default function FoodScreen() {
 
   const filtered = useMemo(() => {
     let items = state.restaurants;
-    if (cuisine !== 'all') items = items.filter(r => r.cuisineTypeBn === cuisine);
+    if (cuisine !== 'all') {
+      const chip = FILTERS.find(f => f.id === cuisine);
+      const match = chip?.cuisines ?? [cuisine];
+      items = items.filter(r => match.includes(r.cuisineTypeBn));
+    }
     if (query.trim()) {
       const q = query.toLowerCase();
       items = items.filter(r => r.nameBn.includes(query) || r.nameEn.toLowerCase().includes(q));
