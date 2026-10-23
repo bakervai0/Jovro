@@ -3,6 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { signUp } from '../../services/auth';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import {
+  signUp as supabaseSignUp, profileToUser,
+} from '../../lib/auth';
 
 // ── Stitch 3 (sign up) · Create Account ───────────────────────
 // Brand header, name / mobile (+880) / password / confirm with
@@ -16,6 +20,7 @@ export default function SignUpScreen() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState(''); // backend mode only
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -30,6 +35,9 @@ export default function SignUpScreen() {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = bn ? 'নাম দিন' : 'Name required';
     if (phone.replace(/\D/g, '').length < 10) e.phone = bn ? 'সঠিক নম্বর দিন' : 'Enter valid phone';
+    if (isSupabaseConfigured && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      e.email = bn ? 'সঠিক ইমেইল দিন' : 'Enter a valid email';
+    }
     if (password.length < 6) e.password = bn ? 'কমপক্ষে ৬ অক্ষর' : 'Min 6 characters';
     if (password !== confirm) e.confirm = bn ? 'পাসওয়ার্ড মিলছে না' : 'Passwords do not match';
     setErrors(e);
@@ -42,6 +50,28 @@ export default function SignUpScreen() {
     setLoading(true);
     try {
       const fullPhone = phone.startsWith('0') || phone.startsWith('+') ? phone : `0${phone}`;
+      if (isSupabaseConfigured) {
+        // Backend mode: Supabase Auth sign-up (email + password).
+        // The DB trigger creates the profile as 'customer'; the
+        // rider/staff/admin roles are granted afterwards (see
+        // supabase/SETUP.md — Phase 3).
+        const res = await supabaseSignUp({
+          email: email.trim(), password,
+          name: name.trim(), nameBn: name.trim(), mobile: fullPhone,
+        });
+        if (res.data?.profile) {
+          dispatch({ type: 'LOGIN', user: profileToUser(res.data.profile) });
+          navigate('/area', { replace: true });
+        } else if (res.data) {
+          // Account created but no session yet (email
+          // confirmation pending) — send them to log in.
+          setErrors({ phone: bn ? 'অ্যাকাউন্ট তৈরি হয়েছে — ইমেইল যাচাই করে লগইন করুন' : 'Account created — verify your email, then log in' });
+          navigate('/login', { replace: true });
+        } else {
+          setErrors({ email: res.error?.message ?? (bn ? 'নিবন্ধন ব্যর্থ হয়েছে, আবার চেষ্টা করুন' : 'Sign up failed, try again') });
+        }
+        return;
+      }
       const res = await signUp(name.trim(), fullPhone, password);
       if (res.success && res.user) {
         dispatch({ type: 'LOGIN', user: res.user });
@@ -113,6 +143,24 @@ export default function SignUpScreen() {
             </div>
             {errText('phone')}
           </div>
+
+          {/* Email — backend mode only (Supabase Auth identity).
+              Same field styling as the rest of the form. */}
+          {isSupabaseConfigured && (
+            <div>
+              <label className="block text-label-md font-label-md text-on-surface font-semibold mb-1.5">
+                {bn ? 'ইমেইল / Email' : 'Email'} <span className="text-error">*</span>
+              </label>
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">mail</span>
+                <input
+                  type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" className={clsx(inputCls, 'pl-10')}
+                />
+              </div>
+              {errText('email')}
+            </div>
+          )}
 
           <div>
             <label className="block text-label-md font-label-md text-on-surface font-semibold mb-1.5">

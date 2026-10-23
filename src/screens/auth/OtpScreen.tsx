@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link, Navigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { OtpInput } from '../../components/ui/Input';
 import { OPERATOR } from '../../data/infoContent';
 import { toBnDigits } from '../../services/orderUtils';
 import { requestOtp, verifyOtp } from '../../services/auth';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 // ── Stitch 3 (phone sign-in) + Stitch 5 (OTP verification) ────
 // Two steps in one screen: phone entry (name optional, +880
@@ -37,6 +38,11 @@ export default function OtpScreen() {
     const t = setInterval(() => setResendSeconds(s => s - 1), 1000);
     return () => clearInterval(t);
   }, [resendSeconds, step]);
+
+  // The OTP flow is DEMO-ONLY: with a real backend, sign-in is
+  // email + password and password reset goes by email link —
+  // this screen simply does not exist in configured mode.
+  if (isSupabaseConfigured) return <Navigate to="/login" replace />;
 
   const fullPhone = phone.startsWith('0') || phone.startsWith('+') ? phone : phone ? `0${phone}` : phone;
 

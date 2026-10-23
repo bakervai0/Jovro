@@ -4,6 +4,8 @@ import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { OPERATOR } from '../../data/infoContent';
 import { resetPassword } from '../../services/auth';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { resetPassword as supabaseResetPassword } from '../../lib/auth';
 
 // ── Stitch 6a · Reset Password ────────────────────────────────
 // Brand header, lock-reset hero, SMS explainer, mobile field
@@ -18,9 +20,26 @@ export default function ForgotPasswordScreen() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(false); // backend mode: reset email sent
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSupabaseConfigured) {
+      // Backend mode: the field holds an email; Supabase sends
+      // a reset link — no OTP step exists in this mode.
+      const email = phone.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError(bn ? 'সঠিক ইমেইল দিন' : 'Enter a valid email'); return; }
+      setLoading(true);
+      setError('');
+      try {
+        const res = await supabaseResetPassword(email);
+        if (res.success) setSent(true);
+        else setError(res.error?.message ?? (bn ? 'পাঠানো যায়নি, আবার চেষ্টা করুন' : 'Could not send, try again'));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     const full = phone.startsWith('0') || phone.startsWith('+') ? phone : `0${phone}`;
     if (full.replace(/\D/g, '').length < 11) { setError(bn ? 'সঠিক নম্বর দিন' : 'Enter valid phone'); return; }
     setLoading(true);
@@ -84,19 +103,25 @@ export default function ForgotPasswordScreen() {
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
           <div>
             <label className="block text-label-md font-label-md text-on-surface font-semibold mb-1.5">
-              {bn ? 'মোবাইল নম্বর (Mobile number)' : 'Mobile number'}
+              {isSupabaseConfigured
+                ? (bn ? 'ইমেইল (Email)' : 'Email')
+                : (bn ? 'মোবাইল নম্বর (Mobile number)' : 'Mobile number')}
             </label>
             <div className="flex gap-2">
-              <span className="h-12 px-3 rounded-xl bg-surface-container-low border border-outline-variant/50 flex items-center font-label-lg text-label-lg text-on-surface-variant shrink-0">+880</span>
+              {!isSupabaseConfigured && (
+                <span className="h-12 px-3 rounded-xl bg-surface-container-low border border-outline-variant/50 flex items-center font-label-lg text-label-lg text-on-surface-variant shrink-0">+880</span>
+              )}
               <div className="relative flex-1">
                 <input
-                  type="tel" inputMode="numeric" value={phone} onChange={e => setPhone(e.target.value)}
-                  placeholder="1XXXXXXXXX" className={inputCls}
+                  type={isSupabaseConfigured ? 'email' : 'tel'} inputMode={isSupabaseConfigured ? 'email' : 'numeric'} value={phone} onChange={e => setPhone(e.target.value)}
+                  placeholder={isSupabaseConfigured ? 'you@example.com' : '1XXXXXXXXX'} className={inputCls}
                 />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold">
-                  {bn ? 'লালমনিরহাট সদর' : 'Sadar'}
-                  <span className="material-symbols-outlined text-[12px]">expand_more</span>
-                </span>
+                {!isSupabaseConfigured && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold">
+                    {bn ? 'লালমনিরহাট সদর' : 'Sadar'}
+                    <span className="material-symbols-outlined text-[12px]">expand_more</span>
+                  </span>
+                )}
               </div>
             </div>
             {error && <p className="mt-1.5 text-body-sm text-error font-medium">{error}</p>}
@@ -111,10 +136,19 @@ export default function ForgotPasswordScreen() {
             type="submit" disabled={loading}
             className="w-full h-12 rounded-full bg-primary text-on-primary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 shadow-md active:scale-[0.98] transition-all disabled:opacity-50"
           >
-            <span>{loading ? (bn ? 'পাঠানো হচ্ছে...' : 'Sending...') : (bn ? 'OTP পাঠান / Send OTP' : 'Send OTP')}</span>
+            <span>{loading ? (bn ? 'পাঠানো হচ্ছে...' : 'Sending...') : isSupabaseConfigured ? (bn ? 'রিসেট লিংক পাঠান / Send reset link' : 'Send reset link') : (bn ? 'OTP পাঠান / Send OTP' : 'Send OTP')}</span>
             {!loading && <span className="material-symbols-outlined text-[20px]">arrow_forward</span>}
           </button>
         </form>
+
+        {sent && (
+          <p className="mt-4 flex items-start gap-2 p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-body-sm font-body-sm text-on-surface leading-relaxed">
+            <span className="material-symbols-outlined text-primary text-[19px] shrink-0 mt-0.5">mark_email_read</span>
+            {bn
+              ? 'রিসেট লিংক আপনার ইমেইলে পাঠানো হয়েছে — ইমেইলটা খুলে লিংকে চাপ দিয়ে নতুন পাসওয়ার্ড বসান।'
+              : 'A reset link has been sent to your email — open it and set a new password.'}
+          </p>
+        )}
 
         <div className="mt-5 p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm">
           <div className="flex items-start gap-2.5">

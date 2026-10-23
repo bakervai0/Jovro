@@ -5,12 +5,19 @@ import { useApp } from '../../context/AppContext';
 import { DemoRoleSwitcher } from '../../components/shared/DemoRoleSwitcher';
 import { OPERATOR } from '../../data/infoContent';
 import { loginWithPhone } from '../../services/auth';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import {
+  signIn as supabaseSignIn, profileToUser, routeForRole,
+} from '../../lib/auth';
 
 // ── Stitch 4 · Login ──────────────────────────────────────────
-// Brand header, mobile + password (with visibility toggle),
+// Brand header, identifier + password (with visibility toggle),
 // forgot link, OTP + Google alternatives, zero-markup trust
-// card and the create-account link. Auth flow unchanged
-// (loginWithPhone → role-based redirect).
+// card and the create-account link. Demo mode: phone + password
+// via loginWithPhone. Backend mode (Phase 3): the identifier
+// field becomes email + password via Supabase Auth, the
+// profile's role decides the landing route, and the demo OTP
+// button is hidden — layout unchanged in both modes.
 
 export default function LoginScreen() {
   const { state, dispatch } = useApp();
@@ -30,6 +37,20 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     try {
+      if (isSupabaseConfigured) {
+        // Backend mode: email + password against Supabase Auth.
+        // (In configured mode the identifier field below IS the
+        // email field — same layout, email semantics.) The
+        // profile's role decides where the user lands.
+        const res = await supabaseSignIn(phone.trim(), password);
+        if (res.data?.profile) {
+          dispatch({ type: 'LOGIN', user: profileToUser(res.data.profile) });
+          navigate(routeForRole(res.data.profile.role), { replace: true });
+        } else {
+          setError(res.error?.message ?? (bn ? 'ইমেইল বা পাসওয়ার্ড ভুল হয়েছে' : 'Invalid email or password'));
+        }
+        return;
+      }
       const res = await loginWithPhone(phone, password);
       if (res.success && res.user) {
         dispatch({ type: 'LOGIN', user: res.user });
@@ -79,19 +100,25 @@ export default function LoginScreen() {
           {bn ? 'লগইন করুন / Welcome back' : 'Welcome back / লগইন করুন'}
         </h1>
         <p className="text-body-md font-body-md text-on-surface-variant mt-1">
-          {bn ? 'আপনার ফোন নম্বর এবং পাসওয়ার্ড দিয়ে লগইন করুন' : 'Log in with your phone number and password'}
+          {isSupabaseConfigured
+            ? (bn ? 'আপনার ইমেইল এবং পাসওয়ার্ড দিয়ে লগইন করুন' : 'Log in with your email and password')
+            : (bn ? 'আপনার ফোন নম্বর এবং পাসওয়ার্ড দিয়ে লগইন করুন' : 'Log in with your phone number and password')}
         </p>
 
         <form onSubmit={handleLogin} className="mt-5 flex flex-col gap-4">
           <div>
             <label className="block text-label-md font-label-md text-on-surface font-semibold mb-1.5">
-              {bn ? 'মোবাইল নম্বর (Mobile number)' : 'Mobile number'}
+              {isSupabaseConfigured
+                ? (bn ? 'ইমেইল (Email)' : 'Email')
+                : (bn ? 'মোবাইল নম্বর (Mobile number)' : 'Mobile number')}
             </label>
             <div className="flex gap-2">
-              <span className="h-12 px-3 rounded-xl bg-surface-container-low border border-outline-variant/50 flex items-center font-label-lg text-label-lg text-on-surface-variant shrink-0">+880</span>
+              {!isSupabaseConfigured && (
+                <span className="h-12 px-3 rounded-xl bg-surface-container-low border border-outline-variant/50 flex items-center font-label-lg text-label-lg text-on-surface-variant shrink-0">+880</span>
+              )}
               <input
-                type="tel" inputMode="numeric" value={phone} onChange={e => setPhone(e.target.value)}
-                placeholder="1XXXXXXXXX" className={inputCls}
+                type={isSupabaseConfigured ? 'email' : 'tel'} inputMode={isSupabaseConfigured ? 'email' : 'numeric'} value={phone} onChange={e => setPhone(e.target.value)}
+                placeholder={isSupabaseConfigured ? 'you@example.com' : '1XXXXXXXXX'} className={inputCls}
               />
             </div>
           </div>
@@ -134,13 +161,17 @@ export default function LoginScreen() {
         </div>
 
         <div className="space-y-2.5">
-          <button
-            type="button" onClick={() => navigate('/otp-login')}
-            className="w-full h-12 rounded-full border-[1.5px] border-primary text-primary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-          >
-            <span className="material-symbols-outlined text-[20px]">sms</span>
-            <span>{bn ? 'OTP দিয়ে লগইন Login with OTP' : 'Login with OTP'}</span>
-          </button>
+          {/* OTP login is a demo-mode path only — with a real
+              backend, sign-in is email + password above. */}
+          {!isSupabaseConfigured && (
+            <button
+              type="button" onClick={() => navigate('/otp-login')}
+              className="w-full h-12 rounded-full border-[1.5px] border-primary text-primary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+            >
+              <span className="material-symbols-outlined text-[20px]">sms</span>
+              <span>{bn ? 'OTP দিয়ে লগইন Login with OTP' : 'Login with OTP'}</span>
+            </button>
+          )}
           <button
             type="button" onClick={() => setGoogleNote(true)}
             className="w-full h-12 rounded-full bg-surface-container-lowest border border-outline-variant/50 text-on-surface font-label-lg text-label-lg font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-sm"
