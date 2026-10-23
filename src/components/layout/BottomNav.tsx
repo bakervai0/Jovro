@@ -2,55 +2,62 @@ import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { NotifBadge } from '../ui/Badge';
 
-interface NavItem {
-  icon: string;
-  activeIcon: string;
-  labelKey: string;
+interface TabDef {
   path: string;
-  badgeCount?: number;
+  labelBn: string;
+  labelEn: string;
+  icon: string;
+  match: (pathname: string) => boolean;
+  badge?: number;
+  dot?: boolean;
 }
 
+/** Persistent 5-tab customer navigation (হোম · বাজার · রেস্টুরেন্ট · অর্ডার · প্রোফাইল). */
 export function CustomerBottomNav() {
-  const { t, cartCount, unreadCount } = useApp();
+  const { state } = useApp();
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const bn = state.lang === 'bn';
 
-  const items: NavItem[] = [
-    { icon: 'home', activeIcon: 'home', labelKey: 'nav.home', path: '/' },
-    { icon: 'store', activeIcon: 'store', labelKey: 'nav.bazaar', path: '/bazaar' },
-    { icon: 'restaurant', activeIcon: 'restaurant', labelKey: 'nav.food', path: '/food' },
-    { icon: 'shopping_cart', activeIcon: 'shopping_cart', labelKey: 'nav.cart', path: '/cart', badgeCount: cartCount },
-    { icon: 'person', activeIcon: 'person', labelKey: 'nav.profile', path: '/profile' },
+  const activeOrders = state.orders.filter(o =>
+    ['pending', 'confirmed', 'buying', 'on-the-way'].includes(o.status),
+  ).length;
+
+  const tabs: TabDef[] = [
+    { path: '/', labelBn: 'হোম', labelEn: 'Home', icon: 'home', match: p => p === '/' },
+    { path: '/bazaar', labelBn: 'বাজার', labelEn: 'Bazaar', icon: 'storefront', match: p => p.startsWith('/bazaar') || p.startsWith('/product') || p.startsWith('/category') },
+    { path: '/food', labelBn: 'রেস্টুরেন্ট', labelEn: 'Restaurants', icon: 'restaurant', match: p => p.startsWith('/food') },
+    { path: '/orders', labelBn: 'অর্ডার', labelEn: 'Orders', icon: 'receipt_long', match: p => p.startsWith('/orders'), dot: activeOrders > 0 },
+    { path: '/profile', labelBn: 'প্রোফাইল', labelEn: 'Profile', icon: 'person', match: p => p.startsWith('/profile') || p.startsWith('/settings') },
   ];
 
   return (
-    <nav className="bottom-nav">
-      <div className="flex items-center justify-around h-16 px-2">
-        {items.map(item => {
-          const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
+    <nav className="bottom-nav" aria-label={bn ? 'প্রধান নেভিগেশন' : 'Main navigation'}>
+      <div className="flex h-[4.5rem] items-stretch px-1">
+        {tabs.map(tab => {
+          const active = tab.match(pathname);
           return (
             <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
+              key={tab.path}
+              onClick={() => navigate(tab.path)}
+              aria-current={active ? 'page' : undefined}
               className={clsx(
-                'flex flex-col items-center gap-0.5 flex-1 py-1 transition-colors',
-                isActive ? 'text-primary' : 'text-on-surface-variant',
+                'relative flex flex-1 flex-col items-center justify-center gap-1 pt-1 transition-colors duration-150',
+                active ? 'text-primary' : 'text-on-surface/70',
               )}
             >
-              <div className="relative">
-                <span className={clsx(
-                  'material-symbols-outlined text-[24px]',
-                  isActive && 'filled-symbol',
-                )}>
-                  {item.activeIcon}
+              <span className="relative">
+                <span className={clsx('material-symbols-outlined text-[23px]', active && 'filled-symbol')}>
+                  {tab.icon}
                 </span>
-                {item.badgeCount != null && item.badgeCount > 0 && (
-                  <NotifBadge count={item.badgeCount} />
+                {tab.dot && (
+                  <span className="absolute -right-1.5 -top-0.5 h-[7px] w-[7px] rounded-full border border-white bg-secondary-bright" />
                 )}
-              </div>
-              <span className="text-[10px] font-medium leading-none">{t(item.labelKey)}</span>
+              </span>
+              <span className={clsx('text-[10.5px] leading-none', active ? 'font-bold' : 'font-medium')}>
+                {bn ? tab.labelBn : tab.labelEn}
+              </span>
             </button>
           );
         })}
@@ -59,32 +66,44 @@ export function CustomerBottomNav() {
   );
 }
 
+/** Rider navigation — deliveries, history, earnings, notifications, profile. */
 export function RiderBottomNav() {
-  const { t, unreadCount } = useApp();
+  const { state, unreadCount } = useApp();
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const bn = state.lang === 'bn';
 
   const items = [
-    { icon: 'directions_bike', labelKey: 'nav.deliveries', path: '/rider' },
-    { icon: 'history', labelKey: 'nav.history', path: '/rider/history' },
-    { icon: 'account_balance_wallet', labelKey: 'nav.earnings', path: '/rider/earnings' },
-    { icon: 'notifications', labelKey: 'nav.notifications', path: '/rider/notifications', badgeCount: unreadCount },
-    { icon: 'person', labelKey: 'nav.profile', path: '/rider/profile' },
+    { icon: 'directions_bike', labelBn: 'ডেলিভারি', labelEn: 'Deliveries', path: '/rider' },
+    { icon: 'history', labelBn: 'ইতিহাস', labelEn: 'History', path: '/rider/history' },
+    { icon: 'account_balance_wallet', labelBn: 'আয়', labelEn: 'Earnings', path: '/rider/earnings' },
+    { icon: 'notifications', labelBn: 'নোটিফিকেশন', labelEn: 'Alerts', path: '/rider/notifications' },
+    { icon: 'person', labelBn: 'প্রোফাইল', labelEn: 'Profile', path: '/rider/profile' },
   ];
 
   return (
-    <nav className="bottom-nav">
-      <div className="flex items-center justify-around h-16 px-2">
+    <nav className="bottom-nav" aria-label={bn ? 'রাইডার নেভিগেশন' : 'Rider navigation'}>
+      <div className="flex h-[4.5rem] items-stretch px-1">
         {items.map(item => {
-          const isActive = pathname === item.path || (item.path !== '/rider' && pathname.startsWith(item.path));
+          const active = pathname === item.path || (item.path !== '/rider' && pathname.startsWith(item.path));
           return (
-            <button key={item.path} onClick={() => navigate(item.path)}
-              className={clsx('flex flex-col items-center gap-0.5 flex-1 py-1 transition-colors', isActive ? 'text-primary' : 'text-on-surface-variant')}>
-              <div className="relative">
-                <span className={clsx('material-symbols-outlined text-[24px]', isActive && 'filled-symbol')}>{item.icon}</span>
-                {item.badgeCount != null && item.badgeCount > 0 && <NotifBadge count={item.badgeCount} />}
-              </div>
-              <span className="text-[10px] font-medium">{t(item.labelKey)}</span>
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              className={clsx(
+                'relative flex flex-1 flex-col items-center justify-center gap-1 pt-1',
+                active ? 'text-primary' : 'text-on-surface/70',
+              )}
+            >
+              <span className="relative">
+                <span className={clsx('material-symbols-outlined text-[23px]', active && 'filled-symbol')}>{item.icon}</span>
+                {item.path === '/rider/notifications' && unreadCount > 0 && (
+                  <span className="absolute -right-1.5 -top-0.5 h-2 w-2 rounded-full bg-secondary-bright" />
+                )}
+              </span>
+              <span className={clsx('text-[10.5px] leading-none', active ? 'font-bold' : 'font-medium')}>
+                {bn ? item.labelBn : item.labelEn}
+              </span>
             </button>
           );
         })}

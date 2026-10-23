@@ -1,158 +1,131 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { TopAppBar } from '../../components/layout/TopAppBar';
-import { Input } from '../../components/ui/Input';
+import { PageHeader, SectionHeading } from '../../components/layout/Headers';
+import { SearchBar } from '../../components/ui/SearchBar';
+import { RestaurantRow } from '../../components/shared/RestaurantCard';
+import { toBn } from '../../lib/format';
+import { asset } from '../../lib/asset';
 import type { Restaurant } from '../../types';
 
-const CUISINE_FILTERS = [
-  { id: 'all', labelBn: 'সব', labelEn: 'All' },
-  { id: 'বিরিয়ানি', labelBn: 'বিরিয়ানি', labelEn: 'Biryani' },
-  { id: 'ভাত-তরকারি', labelBn: 'ভাত-তরকারি', labelEn: 'Rice & Curry' },
-  { id: 'ফাস্ট ফুড', labelBn: 'ফাস্ট ফুড', labelEn: 'Fast Food' },
-  { id: 'চা-নাস্তা', labelBn: 'চা-নাস্তা', labelEn: 'Tea & Snacks' },
+const CUISINES = [
+  { id: 'all', bn: 'সব', en: 'All' },
+  { id: 'biryani', bn: 'বিরিয়ানি', en: 'Biryani' },
+  { id: 'rice', bn: 'ভাত-তরকারি', en: 'Rice hotel' },
+  { id: 'sweets', bn: 'মিষ্টি', en: 'Sweets' },
+  { id: 'fastfood', bn: 'ফাস্ট ফুড', en: 'Fast food' },
 ];
 
-function RestaurantListCard({ restaurant }: { restaurant: Restaurant }) {
-  const { state } = useApp();
-  const navigate = useNavigate();
-  const lang = state.lang;
-
-  return (
-    <button
-      onClick={() => navigate(`/food/${restaurant.id}`)}
-      className={clsx(
-        'w-full text-left bg-surface-container-lowest border border-outline-variant/40 rounded-3xl overflow-hidden active:bg-surface-container transition-colors',
-        !restaurant.isOpen && 'opacity-70',
-      )}
-    >
-      {/* Top banner with emoji */}
-      <div className="h-28 bg-gradient-to-br from-surface-container to-surface-container-high flex items-center justify-center relative">
-        <span className="text-[64px]">{restaurant.imageEmoji}</span>
-        {!restaurant.isOpen && (
-          <div className="absolute inset-0 bg-surface/60 flex items-center justify-center">
-            <span className="text-label-lg font-bold text-on-surface-variant bg-surface/80 px-3 py-1 rounded-full">
-              {lang === 'bn' ? 'বন্ধ' : 'Closed'}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="p-3.5">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-body-md font-semibold text-on-surface">
-              {lang === 'bn' ? restaurant.nameBn : restaurant.nameEn}
-            </p>
-            <p className="text-label-sm text-on-surface-variant mt-0.5">
-              {lang === 'bn' ? restaurant.cuisineTypeBn : restaurant.cuisineTypeEn}
-            </p>
-          </div>
-          <div className="flex items-center gap-1 bg-success/10 rounded-full px-2 py-0.5 flex-shrink-0">
-            <span className="material-symbols-outlined text-[13px] text-success filled-symbol">star</span>
-            <span className="text-label-sm font-bold text-success">{restaurant.rating}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 mt-2">
-          <div className="flex items-center gap-1.5 text-on-surface-variant">
-            <span className="material-symbols-outlined text-[14px]">schedule</span>
-            <span className="text-label-sm">{restaurant.deliveryTimeMin} {lang === 'bn' ? 'মিনিট' : 'min'}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-on-surface-variant">
-            <span className="material-symbols-outlined text-[14px]">payments</span>
-            <span className="text-label-sm">
-              {lang === 'bn' ? `সর্বনিম্ন ৳${restaurant.minOrder}` : `Min ৳${restaurant.minOrder}`}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-on-surface-variant">
-            <span className="material-symbols-outlined text-[14px]">reviews</span>
-            <span className="text-label-sm">{restaurant.ratingCount}</span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
+function matchesCuisine(r: Restaurant, id: string) {
+  if (id === 'all') return true;
+  const text = `${r.cuisineTypeBn} ${r.cuisineTypeEn}`.toLowerCase();
+  if (id === 'biryani') return text.includes('বিরিয়ানি') || text.includes('biryani') || text.includes('কাচ্চি');
+  if (id === 'rice') return text.includes('ভাত') || text.includes('rice') || text.includes('হোটেল');
+  if (id === 'sweets') return text.includes('মিষ্টি') || text.includes('sweet');
+  if (id === 'fastfood') return text.includes('ফাস্ট') || text.includes('fast');
+  return true;
 }
 
 export default function FoodScreen() {
   const { state } = useApp();
-  const lang = state.lang;
+  const navigate = useNavigate();
+  const bn = state.lang === 'bn';
 
   const [query, setQuery] = useState('');
   const [cuisine, setCuisine] = useState('all');
+  const [openOnly, setOpenOnly] = useState(false);
 
-  const filtered = useMemo(() => {
-    let items = state.restaurants;
-    if (cuisine !== 'all') items = items.filter(r => r.cuisineTypeBn === cuisine);
+  const restaurants = useMemo(() => {
+    let list = state.restaurants.filter(r => matchesCuisine(r, cuisine));
+    if (openOnly) list = list.filter(r => r.isOpen);
     if (query.trim()) {
       const q = query.toLowerCase();
-      items = items.filter(r =>
+      list = list.filter(r =>
         r.nameBn.includes(query) ||
-        r.nameEn.toLowerCase().includes(q),
+        r.nameEn.toLowerCase().includes(q) ||
+        r.cuisineTypeBn.includes(query) ||
+        r.menuItems.some(m => m.nameBn.includes(query) || m.nameEn.toLowerCase().includes(q)),
       );
     }
-    // Open restaurants first
-    return [...items].sort((a, b) => (b.isOpen ? 1 : 0) - (a.isOpen ? 1 : 0));
-  }, [query, cuisine]);
+    return [...list].sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || b.rating - a.rating);
+  }, [state.restaurants, cuisine, openOnly, query]);
 
   return (
-    <div className="flex-1 flex flex-col bg-surface overflow-hidden">
-      <TopAppBar
+    <div className="screen-scroll bg-surface">
+      <PageHeader
+        title={bn ? 'রেস্টুরেন্ট' : 'Restaurants'}
+        subtitle={bn ? 'স্থানীয় হোটেল ও রেস্টুরেন্ট' : 'Local hotels & restaurants'}
         showBack
-        title={lang === 'bn' ? 'খাবার' : 'Food'}
-        subtitle={lang === 'bn' ? 'রেস্টুরেন্ট থেকে অর্ডার করুন' : 'Order from restaurants'}
+        onBack={() => navigate('/')}
+        showLang
       />
 
-      {/* Sticky search + filters */}
-      <div className="flex flex-col gap-3 px-4 py-3 bg-surface sticky top-14 z-20 shadow-sm">
-        <Input
-          type="search"
-          placeholder={lang === 'bn' ? 'রেস্টুরেন্ট খুঁজুন...' : 'Search restaurants...'}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          icon="search"
-          iconEnd={query ? 'close' : undefined}
-          onIconEndClick={() => setQuery('')}
-        />
+      <div className="flex flex-col gap-3 pt-3">
+        <div className="px-4">
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            placeholder={bn ? 'রেস্টুরেন্ট বা খাবার খুঁজুন...' : 'Search restaurant or dish...'}
+          />
+        </div>
 
-        {/* Cuisine filter chips */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {CUISINE_FILTERS.map(c => (
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1">
+          {CUISINES.map(c => (
             <button
               key={c.id}
               onClick={() => setCuisine(c.id)}
               className={clsx(
-                'px-3 py-1.5 rounded-full text-label-md font-medium whitespace-nowrap border transition-all flex-shrink-0',
-                cuisine === c.id
-                  ? 'bg-secondary text-white border-secondary'
-                  : 'bg-surface-container text-on-surface-variant border-outline-variant',
+                'flex flex-shrink-0 items-center gap-1 rounded-full border px-3.5 py-1.5 text-[12px] font-semibold',
+                cuisine === c.id ? 'border-primary bg-primary text-white' : 'border-outline-variant bg-surface-container-lowest text-on-surface',
               )}
             >
-              {lang === 'bn' ? c.labelBn : c.labelEn}
+              {bn ? c.bn : c.en}
             </button>
           ))}
+          <button
+            onClick={() => setOpenOnly(v => !v)}
+            className={clsx(
+              'flex flex-shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold',
+              openOnly ? 'border-primary bg-primary-soft text-primary-deep' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant',
+            )}
+          >
+            <span className="material-symbols-outlined text-[14px]">{openOnly ? 'check_box' : 'check_box_outline_blank'}</span>
+            {bn ? 'শুধু খোলা' : 'Open only'}
+          </button>
         </div>
-      </div>
 
-      {/* Restaurant list */}
-      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-4">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <span className="material-symbols-outlined text-on-surface-variant/40 text-[56px]">restaurant_menu</span>
-            <p className="text-body-lg font-medium text-on-surface-variant">
-              {lang === 'bn' ? 'কোনো রেস্টুরেন্ট পাওয়া যায়নি' : 'No restaurants found'}
+        {/* Offer banner */}
+        <div className="mx-4 flex items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-secondary to-secondary-bright p-3">
+          <img src={asset('/img/food-spread.jpg')} alt="" className="h-[62px] w-[74px] flex-shrink-0 rounded-xl object-cover" loading="lazy" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold text-white/80">{bn ? 'নান্না বিরিয়ানি হাউজ' : 'Nanna Biryani House'}</p>
+            <p className="text-[14px] font-bold leading-tight text-white">
+              {bn ? 'খাসির কাচ্চি (হাফ) — ৳২২০' : 'Mutton Kacchi (Half) — ৳220'}
             </p>
+            <p className="text-[10.5px] text-white/80">{bn ? '৩০–৪০ মিনিটে আপনার দরজায়' : 'Delivered in 30–40 minutes'}</p>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3 pt-3">
-            {filtered.map(r => (
-              <RestaurantListCard key={r.id} restaurant={r} />
-            ))}
-          </div>
-        )}
+          <button onClick={() => navigate('/food/rest-01')} className="flex-shrink-0 rounded-full bg-white px-2.5 py-1.5 text-[11px] font-bold text-secondary">
+            {bn ? 'দেখুন' : 'View'}
+          </button>
+        </div>
+
+        <SectionHeading
+          titleBn={`${toBn(restaurants.length, 'bn')}টি রেস্টুরেন্ট`}
+          titleEn={`${restaurants.length} restaurants`}
+          subtitleBn="Top Restaurants Near You in Sadar"
+          subtitleEn="Top Restaurants Near You in Sadar"
+        />
+
+        <div className="flex flex-col gap-2.5 px-4 pb-40">
+          {restaurants.map(r => <RestaurantRow key={r.id} restaurant={r} />)}
+          {restaurants.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-lowest p-8 text-center">
+              <span className="material-symbols-outlined text-[36px] text-on-surface-variant/50">restaurant</span>
+              <p className="mt-2 text-[13.5px] font-semibold text-on-surface">{bn ? 'কোনো রেস্টুরেন্ট পাওয়া যায়নি' : 'No restaurants found'}</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

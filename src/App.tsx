@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { AppProvider, useApp } from './context/AppContext';
 import { FullScreenLoader } from './components/layout/PageFrame';
 import { CustomerBottomNav, RiderBottomNav } from './components/layout/BottomNav';
+import { FloatingShoppingLayer } from './components/shared/CartBar';
+import { OfflineBanner } from './components/shared/OfflineBanner';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 
 // ── Lazy imports ──────────────────────────────────────────────
 const SplashScreen = lazy(() => import('./screens/auth/SplashScreen'));
@@ -21,10 +24,20 @@ const BazaarScreen = lazy(() => import('./screens/customer/BazaarScreen'));
 const FoodScreen = lazy(() => import('./screens/customer/FoodScreen'));
 const RestaurantMenuScreen = lazy(() => import('./screens/customer/RestaurantMenuScreen'));
 const CartScreen = lazy(() => import('./screens/customer/CartScreen'));
+const CheckoutScreen = lazy(() => import('./screens/customer/CheckoutScreen'));
+const OrderSuccessScreen = lazy(() => import('./screens/customer/OrderSuccessScreen'));
+const ProductDetailScreen = lazy(() => import('./screens/customer/ProductDetailScreen'));
+const SearchScreen = lazy(() => import('./screens/customer/SearchScreen'));
 const ProfileScreen = lazy(() => import('./screens/customer/ProfileScreen'));
 const OrdersScreen = lazy(() => import('./screens/customer/OrdersScreen'));
 const OrderDetailScreen = lazy(() => import('./screens/customer/OrderDetailScreen'));
 const NotificationsScreen = lazy(() => import('./screens/customer/NotificationsScreen'));
+const FavouritesScreen = lazy(() => import('./screens/customer/FavouritesScreen'));
+const EditProfileScreen = lazy(() => import('./screens/customer/EditProfileScreen'));
+const ChangePasswordScreen = lazy(() => import('./screens/customer/ChangePasswordScreen'));
+const AddressesScreen = lazy(() => import('./screens/customer/AddressesScreen'));
+const AddressFormScreen = lazy(() => import('./screens/customer/AddressFormScreen'));
+const EarnScreen = lazy(() => import('./screens/customer/EarnScreen'));
 
 // Phase 4 screens (AI, growth, info)
 const AiScreen = lazy(() => import('./screens/customer/AiScreen'));
@@ -75,6 +88,7 @@ function CustomerLayout() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <Outlet />
+      <FloatingShoppingLayer />
       <CustomerBottomNav />
     </div>
   );
@@ -142,13 +156,24 @@ function AppRoutes() {
         <Route element={<AuthGuard><CustomerLayout /></AuthGuard>}>
           <Route path="/" element={<HomeScreen />} />
           <Route path="/bazaar" element={<BazaarScreen />} />
+          <Route path="/search" element={<SearchScreen />} />
+          <Route path="/product/:id" element={<ProductDetailScreen />} />
           <Route path="/food" element={<FoodScreen />} />
           <Route path="/food/:id" element={<RestaurantMenuScreen />} />
           <Route path="/cart" element={<CartScreen />} />
+          <Route path="/checkout" element={<CheckoutScreen />} />
+          <Route path="/order-success/:id" element={<OrderSuccessScreen />} />
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/orders" element={<OrdersScreen />} />
           <Route path="/orders/:id" element={<OrderDetailScreen />} />
           <Route path="/notifications" element={<NotificationsScreen />} />
+          <Route path="/favourites" element={<FavouritesScreen />} />
+          <Route path="/profile/edit" element={<EditProfileScreen />} />
+          <Route path="/profile/password" element={<ChangePasswordScreen />} />
+          <Route path="/addresses" element={<AddressesScreen />} />
+          <Route path="/addresses/new" element={<AddressFormScreen />} />
+          <Route path="/addresses/:id/edit" element={<AddressFormScreen />} />
+          <Route path="/earn" element={<EarnScreen />} />
           {/* Phase 4 */}
           <Route path="/ai" element={<AiScreen />} />
           <Route path="/ai/busy" element={<AiBusyScreen />} />
@@ -193,9 +218,12 @@ function AppRoutes() {
 export default function App() {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <div className="app-frame">
-          <AppRoutes />
+          <OfflineBanner />
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
         </div>
       </BrowserRouter>
     </AppProvider>

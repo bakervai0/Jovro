@@ -1,8 +1,19 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
-export default defineConfig({
+// GitHub Pages builds live under /Jovro/; local dev + previews run at the root.
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  base: '/Jovro/',
-})
+  base: mode === 'production' ? '/Jovro/' : '/',
+  server: {
+    host: true,
+    port: 5173,
+    // Arena preview serves the app through a proxied host name.
+    allowedHosts: true,
+    strictPort: false,
+  },
+  preview: {
+    host: true,
+    allowedHosts: true,
+  },
+}))

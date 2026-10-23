@@ -1,118 +1,195 @@
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
-
 @layer base {
-  html, body {
-    font-family: 'Noto Sans', 'Hind Siliguri', sans-serif;
-    background-color: #FAFAF7;
-    color: #1a1c1e;
+  html,
+  body {
+    font-family: 'Hind Siliguri', 'Noto Sans', system-ui, sans-serif;
+    background-color: #f7f8f4;
+    color: #14211a;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     overscroll-behavior: none;
+  }
+
+  #root {
+    min-height: 100vh;
   }
 
   * {
     -webkit-tap-highlight-color: transparent;
   }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+  }
+
+  /* Bangla numerals and conjuncts breathe better with a touch of letter spacing */
+  .bn {
+    font-family: 'Hind Siliguri', 'Noto Sans', sans-serif;
+    letter-spacing: 0.005em;
+  }
+
+  ::selection {
+    background: rgba(29, 157, 87, 0.18);
+  }
 }
 
 @layer components {
-  /* No scrollbar utility */
-  .no-scrollbar::-webkit-scrollbar { display: none; }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 
-  /* Material Symbols */
   .material-symbols-outlined {
     font-family: 'Material Symbols Outlined', sans-serif;
-    font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
-    display: inline-block;
-    vertical-align: middle;
+    font-weight: normal;
+    font-style: normal;
     line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
     user-select: none;
+    -webkit-font-feature-settings: 'liga';
   }
   .filled-symbol {
     font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
   }
 
-  /* App frame — phone-width column on desktop */
+  /* ── App frame: phone-width column on desktop, full screen on mobile ── */
   .app-frame {
-    @apply w-full max-w-app mx-auto min-h-screen bg-background relative flex flex-col;
-    border-left: 1px solid rgba(189,202,188,0.2);
-    border-right: 1px solid rgba(189,202,188,0.2);
-    box-shadow: 0 0 40px rgba(0,0,0,0.12);
+    @apply relative mx-auto flex w-full max-w-app flex-col bg-surface;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  @media (min-width: 431px) {
+    .app-frame {
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+      overflow: hidden;
+      border-left: 1px solid rgba(220, 226, 216, 0.7);
+      border-right: 1px solid rgba(220, 226, 216, 0.7);
+      box-shadow: 0 0 60px rgba(20, 33, 26, 0.14);
+    }
   }
 
-  /* Screen transitions */
-  .screen-enter {
-    animation: slideInRight 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  }
-  .screen-exit {
-    animation: slideOutLeft 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  }
-
-  /* Card shadows */
-  .card-shadow {
-    box-shadow: 0 1px 3px rgba(43,45,47,0.06), 0 1px 2px rgba(43,45,47,0.04);
-  }
-  .elevated-bar {
-    box-shadow: 0 -4px 14px rgba(43,45,47,0.09);
-  }
-  .modal-shadow {
-    box-shadow: 0 8px 32px rgba(43,45,47,0.18);
+  /* ── Screen scroll area ── */
+  .screen-scroll {
+    @apply flex-1 overflow-y-auto overscroll-contain no-scrollbar;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
   }
 
-  /* Bangla text rendering */
-  .bn {
-    font-family: 'Hind Siliguri', 'Noto Sans', sans-serif;
-  }
-
-  /* Bottom nav safe area */
-  .pb-nav {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* Sticky bottom navigation */
+  /* ── Persistent bottom navigation ── */
   .bottom-nav {
-    @apply fixed bottom-0 z-50 bg-surface-container-lowest border-t border-outline-variant/30;
-    width: 100%;
-    max-width: 430px;
-    left: 50%;
-    transform: translateX(-50%);
+    @apply fixed bottom-0 left-1/2 z-nav w-full max-w-app -translate-x-1/2 border-t border-outline-variant/60 bg-surface-container-lowest;
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    box-shadow: 0 -4px 14px rgba(43,45,47,0.09);
+    box-shadow: 0 -4px 18px rgba(20, 33, 26, 0.07);
+  }
+
+  /* ── Sticky cart bar floats right above the nav ── */
+  .cart-bar-float {
+    @apply fixed left-1/2 z-cartbar w-full max-w-app -translate-x-1/2 px-4;
+    bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .card {
+    @apply rounded-3xl border border-outline-variant/70 bg-surface-container-lowest shadow-card;
+  }
+
+  .chip-rounded {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-label-md font-semibold text-on-surface-variant transition-colors;
+  }
+
+  .price-bn {
+    font-family: 'Hind Siliguri', 'Noto Sans', sans-serif;
+    font-weight: 700;
+  }
+
+  /* price strike-through */
+  .strike {
+    text-decoration: line-through;
+    text-decoration-color: rgba(91, 103, 95, 0.6);
+  }
+
+  .shimmer-block {
+    @apply relative overflow-hidden bg-surface-container;
+  }
+  .shimmer-block::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 1.6s infinite;
   }
 }
 
-@keyframes slideInRight {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-@keyframes slideOutLeft {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(-100%); opacity: 0; }
-}
-@keyframes slideInUp {
-  from { transform: translateY(100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes pulse-ring {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29,157,87,0.4); }
-  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(29,157,87,0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29,157,87,0); }
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
-/* Desktop background */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Desktop backdrop around the phone column */
 @media (min-width: 431px) {
   body {
-    background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f4 50%, #e3f2f7 100%);
+    background:
+      radial-gradient(1100px 700px at 12% -10%, #e6f4e9 0%, rgba(230, 244, 233, 0) 60%),
+      radial-gradient(900px 600px at 90% 110%, #e6f1f7 0%, rgba(230, 241, 247, 0) 55%),
+      #eef1ec;
   }
 }
+
+/* Legacy animation helpers used by older components */
+@keyframes slideInUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes slideInRight {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.animate-slideInUp { animation: slideInUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-fadeIn { animation: fadeIn 0.3s ease-out both; }
+.animate-slideInRight { animation: slideInRight 0.25s ease-out both; }

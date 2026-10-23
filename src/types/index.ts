@@ -42,12 +42,20 @@ export type ProductCategory =
   | 'milk-eggs'
   | 'snacks';
 
+export interface PackSize {
+  id: string;
+  labelBn: string;
+  labelEn: string;
+  price: number;       // approximate bazaar price for this pack
+  isDefault?: boolean;
+}
+
 export interface Product {
   id: string;
   nameBn: string;
   nameEn: string;
   category: ProductCategory;
-  unit: string;       // e.g. "কেজি", "পিস", "লিটার"
+  unit: string;        // e.g. "কেজি", "পিস", "লিটার"
   unitEn: string;
   approxPrice: number; // BDT — approximate bazaar price
   isAvailable: boolean;
@@ -55,6 +63,22 @@ export interface Product {
   imageUrl?: string;
   description?: string;
   tags?: string[];
+  /** Local photo used across cards / detail pages */
+  image?: string;
+  /** Where it is bought — shown as "গোশালা বাজার • চালের আড়ত" */
+  marketBn?: string;
+  marketEn?: string;
+  qualityBn?: string;
+  qualityEn?: string;
+  gradeBn?: string;
+  gradeEn?: string;
+  isPopular?: boolean;
+  isFlashSale?: boolean;
+  flashDiscount?: number;   // percent off inside the flash-sale rail
+  packSizes?: PackSize[];
+  searchTags?: string[];    // romanised / synonym search helpers
+  stockNoteBn?: string;
+  stockNoteEn?: string;
 }
 
 // ── Restaurants ───────────────────────────────────────────────
@@ -66,10 +90,15 @@ export interface MenuItem {
   price: number;      // exact price
   category?: string;
   section?: string;
+  sectionBn?: string;
   description?: string;
+  descriptionBn?: string;
   imageEmoji?: string;
+  image?: string;
   isAvailable: boolean;
   isPopular?: boolean;
+  servesBn?: string;
+  servesEn?: string;
 }
 
 export interface Restaurant {
@@ -86,9 +115,14 @@ export interface Restaurant {
   ratingCount: number;
   imageEmoji?: string;
   imageUrl?: string;
+  image?: string;
+  coverImage?: string;
   areaId?: string;
+  areaBn?: string;
+  deliveryFee?: number;
   openingTime?: string;
   closingTime?: string;
+  closingBn?: string;
   menuItems: MenuItem[];
 }
 

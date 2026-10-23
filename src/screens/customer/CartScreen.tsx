@@ -1,58 +1,66 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { TopAppBar } from '../../components/layout/TopAppBar';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
-import { BottomSheet } from '../../components/ui/BottomSheet';
-import { placeOrder } from '../../services/orders';
-import type { TimeSlot } from '../../types';
+import { PageHeader } from '../../components/layout/Headers';
+import { QuantityStepper } from '../../components/ui/Stepper';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { addProductToCart } from '../../lib/cartUtils';
+import { tk, toBn } from '../../lib/format';
+import { asset } from '../../lib/asset';
+import type { CartItem } from '../../types';
 
-const TIME_SLOTS: {
-  id: TimeSlot; labelBn: string; labelEn: string; icon: string;
-  rangeBn: string; rangeEn: string; tagBn: string; tagEn: string;
-  detailBn: string; detailEn: string;
-}[] = [
-  {
-    id: 'morning', labelBn: 'সকাল', labelEn: 'Morning', icon: '🌅',
-    rangeBn: 'সকাল ৬:০০–দুপুর ১:৩০', rangeEn: '6:00 AM–1:30 PM',
-    tagBn: 'সকাল বাজার', tagEn: 'Morning bazaar',
-    detailBn: 'সকালের তাজা পণ্য ডেলিভারি', detailEn: 'Fresh morning deliveries',
-  },
-  {
-    id: 'afternoon', labelBn: 'দুপুর', labelEn: 'Afternoon', icon: '☀️',
-    rangeBn: 'দুপুর ১২:০০–১:৩০', rangeEn: '12:00–1:30 PM',
-    tagBn: 'দুপুরের রান', tagEn: 'Midday run',
-    detailBn: 'সকালের শিফটের শেষ অংশ', detailEn: 'Final part of the morning shift',
-  },
-  {
-    id: 'evening', labelBn: 'বিকেল', labelEn: 'Evening', icon: '🌆',
-    rangeBn: 'বিকেল ৪:৩০–রাত ১০:৩০', rangeEn: '4:30–10:30 PM',
-    tagBn: 'সন্ধ্যার বাজার', tagEn: 'Evening bazaar',
-    detailBn: 'বিকেল ও সন্ধ্যার বাজার ও খাবার', detailEn: 'Evening groceries and food',
-  },
-];
+function LinePhoto({ line }: { line: CartItem }) {
+  const { state } = useApp();
+  const product = state.products.find(p => p.id === line.productId);
+  const menuItem = state.restaurants.flatMap(r => r.menuItems).find(m => m.id === line.menuItemId);
+  const image = product?.image ?? menuItem?.image;
+  const emoji = product?.imageEmoji ?? '🍽️';
+  if (image) {
+    return <img src={asset(image)} alt={line.nameEn} className="h-[46px] w-[46px] flex-shrink-0 rounded-lg object-cover" loading="lazy" />;
+  }
+  return (
+    <span className="grid h-[46px] w-[46px] flex-shrink-0 place-items-center rounded-lg bg-surface-container text-[22px]">{emoji}</span>
+  );
+}
 
 export default function CartScreen() {
-  const { state, dispatch, cartTotal, cartCount, cartDeliveryFee, cartDiscount, cartFinal, validatePromo, t } = useApp();
+  const {
+    state, dispatch, cartTotal, cartCount, cartDeliveryFee, cartDiscount, cartFinal, validatePromo,
+  } = useApp();
   const navigate = useNavigate();
-  const lang = state.lang;
-  const defaultAddress = state.addresses.find(a => a.isDefault);
-  const selectedArea = state.areas.find(a => a.id === state.selectedAreaId);
+  const bn = state.lang === 'bn';
 
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
   const [note, setNote] = useState('');
-  const [timeSlot, setTimeSlot] = useState<TimeSlot>(state.isSlotFull ? 'afternoon' : 'morning');
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bkash' | 'nagad'>('cod');
-  const [isPlacing, setIsPlacing] = useState(false);
-  const [showClearSheet, setShowClearSheet] = useState(false);
 
-  const applyPromo = () => {
-    const promo = validatePromo(promoInput.trim());
+  const bazaarLines = state.cart.filter(c => c.source === 'bazaar');
+  const restaurantGroups = useMemo(() => {
+    const map = new Map<string, CartItem[]>();
+    state.cart.filter(c => c.source === 'restaurant').forEach(line => {
+      const rid = line.restaurantId ?? 'rest';
+      map.set(rid, [...(map.get(rid) ?? []), line]);
+    });
+    return Array.from(map.entries());
+  }, [state.cart]);
+
+  // AI "missing items" — pantry basics usually bought with a bazaar run.
+  const missing = useMemo(() => {
+    if (bazaarLines.length === 0) return [];
+    const inCart = new Set(state.cart.map(c => c.productId));
+    const pantry = ['p-09', 'p-12', 'p-33', 'p-24'];
+    return pantry
+      .filter(id => !inCart.has(id))
+      .map(id => state.products.find(p => p.id === id))
+      .filter(Boolean)
+      .slice(0, 3) as typeof state.products;
+  }, [bazaarLines.length, state.cart, state.products]);
+
+  const applyPromo = (code: string) => {
+    const promo = validatePromo(code.trim());
     if (!promo) {
-      setPromoError(lang === 'bn' ? 'অবৈধ কোড বা সর্বনিম্ন অর্ডার পূরণ হয়নি' : 'Invalid code or min order not met');
+      setPromoError(bn ? 'অবৈধ কোড বা সর্বনিম্ন অর্ডার পূরণ হয়নি' : 'Invalid code or minimum order not met');
       return;
     }
     dispatch({ type: 'APPLY_PROMO', promo });
@@ -60,381 +68,318 @@ export default function CartScreen() {
     setPromoInput('');
   };
 
-  const handlePlace = async () => {
-    if (cartCount === 0) return;
-    const address = state.addresses.find(a => a.isDefault);
-    const area = state.selectedAreaId;
-
-    setIsPlacing(true);
-    const result = await placeOrder(
-      state.cart,
-      area,
-      address?.fullAddress ?? '',
-      cartDeliveryFee,
-      state.appliedPromo?.code ?? null,
-      cartDiscount,
-      paymentMethod,
-      timeSlot,
-      state.user?.name ?? '',
-      state.user?.mobile ?? '',
-      note || undefined,
-    );
-    setIsPlacing(false);
-
-    if (result.success && result.order) {
-      // Keep the real signed-in customer id on the order so admin
-      // quick search / Customer 360° group it under this customer.
-      const order = state.user ? { ...result.order, customerId: state.user.id } : result.order;
-      dispatch({ type: 'PLACE_ORDER', order });
-      navigate(`/orders/${order.id}`, { replace: true });
-    }
+  const updateQty = (line: CartItem, qty: number) => {
+    if (qty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: line.id });
+    else dispatch({ type: 'UPDATE_CART_QTY', id: line.id, qty });
   };
 
   if (cartCount === 0) {
     return (
-      <div className="flex-1 flex flex-col bg-surface">
-        <TopAppBar
-          showBack
-          title={lang === 'bn' ? 'কার্ট' : 'Cart'}
+      <div className="screen-scroll bg-surface">
+        <PageHeader showBack title={bn ? 'কার্ট' : 'Cart'} subtitle={bn ? 'আপনার বাজার' : 'Your basket'} />
+        <EmptyState
+          emoji="🛒"
+          title={bn ? 'কার্ট এখন খালি' : 'Your cart is empty'}
+          subtitle={bn ? 'গোশালা বাজার বা রেস্টুরেন্ট থেকে পণ্য যোগ করুন — রাইডার কিনে দরজায় পৌঁছে দেবে।' : 'Add items from Goshala Bazar or a restaurant — a rider will buy and deliver them.'}
+          action={
+            <div className="flex flex-col gap-2">
+              <button onClick={() => navigate('/bazaar')} className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-primary text-[13.5px] font-bold text-white">
+                <span className="material-symbols-outlined text-[19px]">storefront</span>
+                {bn ? 'বাজার দেখুন' : 'Browse the bazaar'}
+              </button>
+              <button onClick={() => navigate('/food')} className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-primary text-[13.5px] font-bold text-primary">
+                <span className="material-symbols-outlined text-[19px]">restaurant</span>
+                {bn ? 'খাবার অর্ডার করুন' : 'Order restaurant food'}
+              </button>
+            </div>
+          }
         />
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-8 text-center">
-          <span className="text-[72px]">🛒</span>
-          <h2 className="text-headline-sm font-semibold text-on-surface">
-            {lang === 'bn' ? 'কার্ট খালি' : 'Cart is empty'}
-          </h2>
-          <p className="text-body-md text-on-surface-variant">
-            {lang === 'bn' ? 'বাজার থেকে পণ্য যোগ করুন' : 'Add items from Bazaar or Food'}
+        <div className="mx-4 rounded-2xl bg-primary-tint p-3">
+          <p className="text-[11.5px] leading-relaxed text-on-surface-variant">
+            <b className="text-primary-deep">{bn ? 'মনে রাখবেন:' : 'Remember:'}</b>{' '}
+            {bn ? 'পণ্যের দামে কোনো মার্কআপ নেই — শুধু ডেলিভারি ফি। রসিদ দেখে আসল দামে হিসাব।' : 'No product markup — only the delivery fee. You pay the bazaar receipt price.'}
           </p>
-          <Button variant="primary" onClick={() => navigate('/bazaar')}>
-            {lang === 'bn' ? 'বাজার দেখুন' : 'Browse Bazaar'}
-          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-surface overflow-hidden">
-      <TopAppBar
+    <div className="screen-scroll bg-surface">
+      <PageHeader
         showBack
-        title={lang === 'bn' ? `কার্ট (${cartCount})` : `Cart (${cartCount})`}
-        subtitle={lang === 'bn' ? `মোট ৳${cartFinal}` : `Total ৳${cartFinal}`}
+        title={bn ? `কার্ট (${toBn(cartCount, 'bn')})` : `Cart (${cartCount})`}
+        subtitle={bn ? 'গোশালা বাজার ও রেস্টুরেন্ট' : 'Bazaar & restaurant items'}
+        right={
+          <button
+            onClick={() => dispatch({ type: 'CLEAR_CART' })}
+            className="text-[11.5px] font-medium text-error"
+          >
+            {bn ? 'খালি করুন' : 'Clear'}
+          </button>
+        }
       />
 
-      <div className="flex-1 overflow-y-auto no-scrollbar">
-        {/* Cart items */}
-        <div className="flex flex-col gap-2 px-4 pt-4">
-          {state.cart.map(item => (
-            <div
-              key={item.id}
-              className="flex items-center gap-3 bg-surface-container-lowest border border-outline-variant/40 rounded-3xl p-3"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-body-md font-medium text-on-surface truncate">
-                  {lang === 'bn' ? item.nameBn : item.nameEn}
-                </p>
-                <p className="text-label-sm text-on-surface-variant">
-                  ৳{item.price} × {item.quantity} = <span className="font-semibold text-primary">৳{item.price * item.quantity}</span>
-                </p>
-              </div>
+      <div className="flex flex-col gap-4 pb-52 pt-3">
+        {/* Bazaar group */}
+        {bazaarLines.length > 0 && (
+          <section className="mx-4 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-[13px] font-bold text-on-surface">
+                <span className="grid h-6 w-6 place-items-center rounded-lg bg-primary-soft text-primary-deep">
+                  <span className="material-symbols-outlined text-[15px]">storefront</span>
+                </span>
+                {bn ? 'গোশালা বাজার' : 'Goshala Bazar'}
+                <span className="rounded-full bg-secondary-soft px-1.5 py-0.5 text-[9px] font-semibold text-secondary">
+                  {bn ? 'আনুমানিক দাম' : 'Approx price'}
+                </span>
+              </h2>
+              <span className="text-[10.5px] text-on-surface-variant">{toBn(bazaarLines.length, state.lang)} {bn ? 'আইটেম' : 'items'}</span>
+            </div>
 
-              {/* Stepper */}
-              <div className="flex items-center gap-1 bg-primary/10 rounded-full">
-                <button
-                  onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: item.id, qty: item.quantity - 1 })}
-                  className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center active:scale-90 transition-transform"
-                >
-                  <span className="material-symbols-outlined text-[16px]">remove</span>
+            <div className="divide-y divide-outline-variant/40">
+              {bazaarLines.map(line => (
+                <div key={line.id} className="flex items-center gap-2.5 py-2.5">
+                  <LinePhoto line={line} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-semibold text-on-surface">{bn ? line.nameBn : line.nameEn}</p>
+                    <p className="text-[10.5px] text-on-surface-variant">
+                      {tk(line.price, state.lang)} × {toBn(line.quantity, state.lang)} {line.unit}
+                    </p>
+                  </div>
+                  <QuantityStepper
+                    qty={line.quantity}
+                    onDecrease={() => updateQty(line, line.quantity - 1)}
+                    onIncrease={() => updateQty(line, line.quantity + 1)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Restaurant groups */}
+        {restaurantGroups.map(([rid, lines]) => {
+          const restaurant = state.restaurants.find(r => r.id === rid);
+          return (
+            <section key={rid} className="mx-4 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="flex items-center gap-1.5 text-[13px] font-bold text-on-surface">
+                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-secondary-soft text-secondary">
+                    <span className="material-symbols-outlined text-[15px]">restaurant</span>
+                  </span>
+                  {restaurant ? (bn ? restaurant.nameBn : restaurant.nameEn) : 'Restaurant'}
+                </h2>
+                <button onClick={() => navigate(`/food/${rid}`)} className="text-[10.5px] font-semibold text-primary">
+                  {bn ? 'মেনু দেখুন' : 'View menu'}
                 </button>
-                <span className="text-label-md font-bold text-primary w-7 text-center">{item.quantity}</span>
-                <button
-                  onClick={() => dispatch({ type: 'UPDATE_CART_QTY', id: item.id, qty: item.quantity + 1 })}
-                  className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center active:scale-90 transition-transform"
-                >
-                  <span className="material-symbols-outlined text-[16px]">add</span>
-                </button>
+              </div>
+              <div className="divide-y divide-outline-variant/40">
+                {lines.map(line => (
+                  <div key={line.id} className="flex items-center gap-2.5 py-2.5">
+                    <LinePhoto line={line} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-semibold text-on-surface">{bn ? line.nameBn : line.nameEn}</p>
+                      <p className="text-[10.5px] text-on-surface-variant">{tk(line.price, state.lang)} × {toBn(line.quantity, state.lang)}</p>
+                    </div>
+                    <QuantityStepper
+                      qty={line.quantity}
+                      onDecrease={() => updateQty(line, line.quantity - 1)}
+                      onIncrease={() => updateQty(line, line.quantity + 1)}
+                    />
+                  </div>
+                ))}
+              </div>
+              {restaurant && cartTotal < restaurant.minOrder && (
+                <p className="mt-2 rounded-lg bg-warning-soft px-2 py-1.5 text-[10.5px] text-warning">
+                  {bn ? `এই রেস্টুরেন্টে মিনিমাম অর্ডার ${tk(restaurant.minOrder, 'bn')}` : `Minimum order ${tk(restaurant.minOrder, 'en')} for this restaurant`}
+                </p>
+              )}
+            </section>
+          );
+        })}
+
+        {/* AI missing items */}
+        {missing.length > 0 && (
+          <section className="mx-4 rounded-2xl border border-primary/30 bg-primary-tint p-3">
+            <div className="flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-primary-deep text-white">
+                <span className="material-symbols-outlined filled-symbol text-[17px]">auto_awesome</span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold tracking-wide text-primary-deep">{bn ? 'সহায়ক • AI ASSISTANT' : 'AI ASSISTANT'}</p>
+                <p className="text-[12.5px] font-bold text-primary-deep">{bn ? 'এগুলো ভুলে গেলেন না তো?' : 'Did you forget these?'}</p>
               </div>
             </div>
-          ))}
+            <div className="mt-2 flex flex-col gap-1.5">
+              {missing.map(p => (
+                <div key={p.id} className="flex items-center gap-2 rounded-xl bg-surface-container-lowest p-1.5">
+                  {p.image ? (
+                    <img src={asset(p.image)} alt={p.nameEn} className="h-9 w-9 rounded-lg object-cover" loading="lazy" />
+                  ) : (
+                    <span className="grid h-9 w-9 place-items-center rounded-lg bg-surface-container text-[18px]">{p.imageEmoji}</span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11.5px] font-semibold text-on-surface">{bn ? p.nameBn : p.nameEn}</p>
+                    <p className="text-[10px] text-on-surface-variant">{p.unit} · {tk(p.approxPrice, state.lang)}</p>
+                  </div>
+                  <button
+                    onClick={() => addProductToCart(dispatch, p)}
+                    className="flex items-center gap-0.5 rounded-full border border-primary px-2 py-1 text-[10px] font-bold text-primary"
+                  >
+                    <span className="material-symbols-outlined text-[13px]">add</span>
+                    {bn ? 'যোগ' : 'Add'}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[9.5px] text-on-surface-variant">
+              {bn ? 'আপনার আগের অর্ডার দেখে সহায়ক এই পরামর্শ দিয়েছে।' : 'Suggested from your previous orders.'}
+            </p>
+          </section>
+        )}
 
-          {/* Clear cart */}
-          <button
-            onClick={() => setShowClearSheet(true)}
-            className="text-label-md text-error font-medium self-end py-1"
-          >
-            {lang === 'bn' ? 'কার্ট খালি করুন' : 'Clear cart'}
-          </button>
-        </div>
+        {/* Promo */}
+        <section className="mx-4 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-1.5 text-[13px] font-bold text-on-surface">
+              <span className="material-symbols-outlined text-[17px] text-secondary">local_offer</span>
+              {bn ? 'প্রোমো কোড' : 'Promo code'}
+            </h2>
+            <span className="text-[10px] text-on-surface-variant">{bn ? 'ছাড় পেতে কোড দিন' : 'Add a code to save'}</span>
+          </div>
 
-        {/* Promo code */}
-        <div className="px-4 mt-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder={lang === 'bn' ? 'প্রোমো কোড' : 'Promo code'}
-              value={state.appliedPromo ? state.appliedPromo.code : promoInput}
-              onChange={e => { setPromoInput(e.target.value); setPromoError(''); }}
-              disabled={!!state.appliedPromo}
-              icon="local_offer"
-              className="flex-1"
-              error={promoError}
+          <div className="mt-2 flex gap-2">
+            <input
+              value={promoInput}
+              onChange={e => { setPromoInput(e.target.value.toUpperCase()); setPromoError(''); }}
+              placeholder={bn ? 'যেমন: JOVRO50' : 'e.g. JOVRO50'}
+              className={clsx(
+                'h-10 min-w-0 flex-1 rounded-xl border bg-surface-container-low px-3 text-[12.5px] uppercase text-on-surface outline-none placeholder:normal-case placeholder:text-on-surface-variant/60',
+                promoError ? 'border-error' : 'border-outline-variant focus:border-primary',
+              )}
             />
-            {state.appliedPromo ? (
+            <button
+              onClick={() => applyPromo(promoInput)}
+              disabled={!promoInput.trim()}
+              className="h-10 flex-shrink-0 rounded-xl bg-primary px-4 text-[12.5px] font-bold text-white disabled:opacity-40"
+            >
+              {bn ? 'প্রয়োগ' : 'Apply'}
+            </button>
+          </div>
+
+          {promoError && (
+            <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-error">
+              <span className="material-symbols-outlined text-[14px]">error</span>
+              {promoError}
+            </p>
+          )}
+          {state.appliedPromo && (
+            <div className="mt-2 flex items-start gap-2 rounded-xl bg-primary-soft p-2">
+              <span className="material-symbols-outlined text-[18px] text-primary">check_circle</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11.5px] font-bold text-primary-deep">
+                  {state.appliedPromo.code} {bn ? 'প্রয়োগ হয়েছে' : 'applied'}
+                </p>
+                <p className="text-[10.5px] text-on-surface-variant">
+                  {bn ? state.appliedPromo.descriptionBn : state.appliedPromo.descriptionEn}
+                </p>
+              </div>
               <button
                 onClick={() => dispatch({ type: 'REMOVE_PROMO' })}
-                className="px-4 py-3 rounded-2xl bg-error/10 text-error text-label-md font-medium"
+                className="text-[10.5px] font-semibold text-error"
               >
-                {lang === 'bn' ? 'বাদ দিন' : 'Remove'}
+                {bn ? 'বাদ দিন' : 'Remove'}
               </button>
-            ) : (
-              <button
-                onClick={applyPromo}
-                disabled={!promoInput.trim()}
-                className="px-4 py-3 rounded-2xl bg-primary text-white text-label-md font-medium disabled:opacity-40"
-              >
-                {lang === 'bn' ? 'ব্যবহার করুন' : 'Apply'}
-              </button>
-            )}
-          </div>
-          {state.appliedPromo && (
-            <p className="text-label-sm text-success mt-1.5 flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px]">check_circle</span>
-              {lang === 'bn' ? state.appliedPromo.descriptionBn : state.appliedPromo.descriptionEn}
-            </p>
+            </div>
           )}
-        </div>
 
-        {/* Delivery slot — Stitch g3 Part 2: stacked slot cards in
-            one checkout card, radio rows, and the morning slot's
-            dashed Slot Full state with the design's bilingual hint. */}
-        <div className="px-4 mt-5">
-          <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/30 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2 border-b border-surface-container pb-2.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <span className="material-symbols-outlined text-lg">local_shipping</span>
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-headline-sm font-headline-sm text-on-surface leading-tight font-bold">
-                    {lang === 'bn' ? 'ডেলিভারি সময় বেছে নিন' : 'Choose a delivery time'}
-                  </h3>
-                  <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">Select Preferred Delivery Slot</span>
-                </div>
-              </div>
-              <span className="rounded-full bg-[#FFF7ED] border border-[#F97316]/40 px-2 py-0.5 text-label-sm font-label-sm font-bold text-[#C2410C] shrink-0">
-                ৳{cartDeliveryFee} {lang === 'bn' ? 'ডেলিভারি চার্জ' : 'Delivery Fee'}
-              </span>
+          {!state.appliedPromo && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {state.promos.filter(p => p.isActive).map(p => (
+                <button
+                  key={p.code}
+                  onClick={() => applyPromo(p.code)}
+                  className="rounded-full border border-dashed border-secondary-bright/60 bg-secondary-soft px-2 py-1 text-[10px] font-bold text-secondary"
+                >
+                  {p.code}
+                  <span className="ml-1 font-normal">· {p.minOrder > 0 ? `${bn ? '৳' : '৳'}${p.minOrder}+` : (bn ? 'সব অর্ডার' : 'all orders')}</span>
+                </button>
+              ))}
             </div>
-
-            <div className="flex flex-col gap-2.5">
-              {TIME_SLOTS.map(slot => {
-                // D12: when slots are full, the morning slot is marked full
-                const isFull = state.isSlotFull && slot.id === 'morning';
-                const isSelected = !isFull && timeSlot === slot.id;
-                return (
-                  <button
-                    key={slot.id}
-                    type="button"
-                    disabled={isFull}
-                    aria-pressed={isSelected}
-                    onClick={() => setTimeSlot(slot.id)}
-                    className={clsx(
-                      'relative flex flex-col p-3 rounded-xl text-left transition-all w-full',
-                      isFull
-                        ? 'border border-dashed border-[#F97316]/60 bg-[#FFF7ED]/50 cursor-not-allowed'
-                        : isSelected
-                          ? 'border-2 border-primary bg-surface-container-lowest shadow-sm'
-                          : 'border border-outline-variant/40 bg-surface-container-lowest hover:border-primary/50',
-                    )}
-                  >
-                    <span className="flex items-center justify-between gap-2 w-full">
-                      <span className="flex items-center gap-3 min-w-0">
-                        <span className={clsx(
-                          'w-5 h-5 rounded-full flex items-center justify-center shrink-0',
-                          isFull
-                            ? 'border border-[#D1D5DB] bg-surface-container-high'
-                            : isSelected
-                              ? 'border-2 border-primary'
-                              : 'border border-outline',
-                        )}>
-                          {isFull ? (
-                            <span className="material-symbols-outlined text-[14px] text-error">block</span>
-                          ) : isSelected ? (
-                            <span className="w-2.5 h-2.5 rounded-full bg-primary" />
-                          ) : null}
-                        </span>
-                        <span className="flex flex-col min-w-0">
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            <span className={clsx('text-label-lg font-label-lg', isFull ? 'text-on-surface/70 line-through' : 'text-on-surface')}>
-                              {lang === 'bn' ? slot.rangeBn : slot.rangeEn}
-                            </span>
-                            <span className={clsx(
-                              'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                              isSelected && !isFull ? 'bg-[#E8F5E9] text-primary' : 'bg-surface-container text-on-surface-variant',
-                            )}>
-                              {lang === 'bn' ? slot.tagBn : slot.tagEn}
-                            </span>
-                          </span>
-                          <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">
-                            {lang === 'bn' ? slot.detailBn : slot.detailEn}
-                          </span>
-                        </span>
-                      </span>
-                      {isFull ? (
-                        <span className="flex items-center gap-1 bg-[#FEE2E2] border border-[#EF4444]/30 text-error px-2 py-0.5 rounded-full shrink-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-error" />
-                          <span className="text-label-sm font-label-sm font-bold">{lang === 'bn' ? 'ভরে গেছে / Slot Full' : 'Slot Full'}</span>
-                        </span>
-                      ) : (
-                        <span className={clsx('text-label-sm font-label-sm shrink-0', isSelected ? 'text-primary font-bold' : 'text-outline')}>
-                          {isSelected ? (lang === 'bn' ? 'পছন্দ করা হয়েছে' : 'Selected') : (lang === 'bn' ? 'খালি আছে' : 'Available')}
-                        </span>
-                      )}
-                    </span>
-                    {isFull && (
-                      <span className="mt-2.5 pt-2 border-t border-[#F97316]/20 flex items-start gap-1.5 w-full">
-                        <span className="material-symbols-outlined text-base shrink-0 text-[#EA580C] mt-0.5">info</span>
-                        <span className="flex flex-col">
-                          <span className="text-body-sm font-body-sm text-[#C2410C] font-semibold">
-                            এই স্লটের সব রাইডার বুকড • অনুগ্রহ করে অন্য স্লট বেছে নিন
-                          </span>
-                          <span className="text-bilingual-sub font-bilingual-sub text-secondary/80">
-                            All delivery partners are booked for this slot. Please choose another time.
-                          </span>
-                        </span>
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Address confirmation chip — g3 Part 2 */}
-            <div className="mt-1 p-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-lg shrink-0">pin_drop</span>
-              <div className="flex flex-col min-w-0">
-                <span className="text-body-sm font-body-sm font-semibold text-on-surface truncate">
-                  {lang === 'bn' ? 'ডেলিভারি ঠিকানা: ' : 'Delivery address: '}
-                  {defaultAddress?.fullAddress ?? (lang === 'bn' ? 'কোনো ঠিকানা সেভ করা নেই' : 'No saved address')}
-                </span>
-                <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">
-                  {selectedArea ? (lang === 'bn' ? selectedArea.nameBn : selectedArea.nameEn) : ''}
-                  {lang === 'bn' ? ' • ডেলিভারি চালু আছে (Delivery Available)' : ' • Delivery Available'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Payment method */}
-        <div className="px-4 mt-5">
-          <p className="text-label-lg font-semibold text-on-surface mb-2">
-            {lang === 'bn' ? 'পেমেন্ট পদ্ধতি' : 'Payment method'}
-          </p>
-          <div className="flex flex-col gap-2">
-            {([
-              { id: 'cod', labelBn: 'ক্যাশ অন ডেলিভারি', labelEn: 'Cash on Delivery', icon: '💵' },
-              { id: 'bkash', labelBn: 'বিকাশ', labelEn: 'bKash', icon: '📱' },
-              { id: 'nagad', labelBn: 'নগদ', labelEn: 'Nagad', icon: '💳' },
-            ] as const).map(pm => (
-              <button
-                key={pm.id}
-                onClick={() => setPaymentMethod(pm.id)}
-                className={clsx(
-                  'flex items-center gap-3 p-3.5 rounded-2xl border transition-all',
-                  paymentMethod === pm.id
-                    ? 'bg-primary/8 border-primary'
-                    : 'bg-surface-container-lowest border-outline-variant/40',
-                )}
-              >
-                <span className="text-[22px]">{pm.icon}</span>
-                <span className={clsx('text-body-md font-medium flex-1 text-left', paymentMethod === pm.id ? 'text-primary' : 'text-on-surface')}>
-                  {lang === 'bn' ? pm.labelBn : pm.labelEn}
-                </span>
-                {paymentMethod === pm.id && (
-                  <span className="material-symbols-outlined text-primary text-[20px]">check_circle</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+          )}
+        </section>
 
         {/* Note */}
-        <div className="px-4 mt-5 mb-4">
-          <Input
-            placeholder={lang === 'bn' ? 'বিশেষ নির্দেশনা (ঐচ্ছিক)...' : 'Special instructions (optional)...'}
+        <section className="mx-4">
+          <p className="mb-1.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-on-surface">
+            <span className="material-symbols-outlined text-[17px] text-primary">edit_note</span>
+            {bn ? 'বিশেষ নির্দেশনা' : 'Special instructions'}
+            <span className="text-[10px] font-normal text-on-surface-variant">({bn ? 'ঐচ্ছিক' : 'optional'})</span>
+          </p>
+          <textarea
             value={note}
             onChange={e => setNote(e.target.value)}
-            icon="edit_note"
+            rows={2}
+            placeholder={bn ? 'যেমন: কলা পাকলে নিবেন না, চালের বস্তা ভালো করে দেখবেন' : 'e.g. pick dry rice sacks, no ripe bananas'}
+            className="w-full resize-none rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3 py-2 text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:border-primary"
           />
-        </div>
+        </section>
 
-        {/* Bill summary */}
-        <div className="mx-4 mb-4 bg-surface-container-lowest border border-outline-variant/40 rounded-3xl p-4 flex flex-col gap-2">
-          <p className="text-label-lg font-bold text-on-surface mb-1">
-            {lang === 'bn' ? 'বিল সারসংক্ষেপ' : 'Bill Summary'}
-          </p>
-          {[
-            { labelBn: 'পণ্যের দাম', labelEn: 'Items total', value: cartTotal },
-            { labelBn: 'ডেলিভারি ফি', labelEn: 'Delivery fee', value: cartDeliveryFee },
-            ...(cartDiscount > 0 ? [{ labelBn: 'ছাড়', labelEn: 'Discount', value: -cartDiscount }] : []),
-          ].map((row, i) => (
-            <div key={i} className="flex justify-between items-center">
-              <span className="text-body-sm text-on-surface-variant">{lang === 'bn' ? row.labelBn : row.labelEn}</span>
-              <span className={clsx('text-body-sm font-medium', row.value < 0 ? 'text-success' : 'text-on-surface')}>
-                {row.value < 0 ? `-৳${Math.abs(row.value)}` : `৳${row.value}`}
-              </span>
+        {/* Bill */}
+        <section className="mx-4 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-3.5 shadow-card">
+          <h2 className="text-[13.5px] font-bold text-on-surface">{bn ? 'বিলের হিসাব' : 'Bill summary'}</h2>
+          <div className="mt-2 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-on-surface-variant">{bn ? 'পণ্যের দাম (আনুমানিক)' : 'Items total (approx)'}</span>
+              <span className="font-semibold text-on-surface">{tk(cartTotal, state.lang)}</span>
             </div>
-          ))}
-          <div className="h-px bg-outline-variant/40 my-1" />
-          <div className="flex justify-between items-center">
-            <span className="text-body-md font-bold text-on-surface">
-              {lang === 'bn' ? 'মোট' : 'Total'}
-            </span>
-            <span className="text-title-sm font-bold text-primary">৳{cartFinal}</span>
-          </div>
-          {cartTotal > 0 && (
-            <p className="text-label-sm text-on-surface-variant/70 mt-1">
-              {lang === 'bn' ? '* বাজারমূল্য আনুমানিক, ভিন্ন হতে পারে' : '* Market prices are approximate, may vary'}
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-on-surface-variant">
+                {bn ? 'ডেলিভারি ফি' : 'Delivery fee'}
+                <span className="ml-1 text-[10px] text-on-surface-variant/70">
+                  ({state.areas.find(a => a.id === state.selectedAreaId)?.nameBn})
+                </span>
+              </span>
+              <span className="font-semibold text-on-surface">{tk(cartDeliveryFee, state.lang)}</span>
+            </div>
+            {cartDiscount > 0 && (
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-primary">{bn ? 'ছাড়' : 'Discount'} {state.appliedPromo ? `(${state.appliedPromo.code})` : ''}</span>
+                <span className="font-semibold text-primary">− {tk(cartDiscount, state.lang)}</span>
+              </div>
+            )}
+            <div className="my-1 h-px bg-dashed border-t border-dashed border-outline-variant" />
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-bold text-on-surface">{bn ? 'সর্বমোট' : 'Total'}</span>
+              <span className="text-[19px] font-bold text-primary-deep">{tk(cartFinal, state.lang)}</span>
+            </div>
+            <p className="rounded-lg bg-surface-container px-2 py-1.5 text-[10px] leading-snug text-on-surface-variant">
+              {bn ? 'পণ্যের দাম আনুমানিক। বাজারের রসিদ অনুযায়ী চূড়ান্ত দাম নির্ধারিত হবে — কোনো মার্কআপ নেই।' : 'Product prices are approximate and settled from the bazaar receipt. No markup.'}
             </p>
-          )}
-        </div>
+          </div>
+        </section>
       </div>
 
-      {/* Place order button */}
-      <div className="px-4 py-3 bg-surface border-t border-outline-variant/30">
-        <Button
-          variant="primary"
-          size="full"
-          loading={isPlacing}
-          onClick={handlePlace}
-          icon="shopping_bag"
-        >
-          {lang === 'bn' ? `অর্ডার করুন — ৳${cartFinal}` : `Place Order — ৳${cartFinal}`}
-        </Button>
-      </div>
-
-      {/* Clear cart confirm */}
-      <BottomSheet
-        open={showClearSheet}
-        onClose={() => setShowClearSheet(false)}
-        title={lang === 'bn' ? 'কার্ট খালি করবেন?' : 'Clear cart?'}
+      {/* Checkout bar */}
+      <div
+        className="fixed left-1/2 z-cartbar w-full max-w-app -translate-x-1/2 border-t border-outline-variant/60 bg-surface/95 px-4 py-2.5 backdrop-blur"
+        style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        <p className="text-body-md text-on-surface-variant px-4 pb-2">
-          {lang === 'bn' ? 'সব পণ্য সরিয়ে ফেলা হবে।' : 'All items will be removed.'}
-        </p>
-        <div className="flex gap-3 px-4 pb-4">
-          <Button variant="outline" size="full" onClick={() => setShowClearSheet(false)}>
-            {lang === 'bn' ? 'বাদ দিন' : 'Cancel'}
-          </Button>
-          <Button
-            variant="danger"
-            size="full"
-            onClick={() => { dispatch({ type: 'CLEAR_CART' }); setShowClearSheet(false); }}
+        <div className="flex items-center gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] leading-tight text-on-surface-variant">{bn ? 'সর্বমোট (ডেলিভারি সহ)' : 'Total with delivery'}</p>
+            <p className="text-[19px] font-bold leading-tight text-primary-deep">{tk(cartFinal, state.lang)}</p>
+          </div>
+          <button
+            onClick={() => navigate('/checkout')}
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary-deep to-primary text-[13.5px] font-bold text-white shadow-sm active:scale-[0.99]"
           >
-            {lang === 'bn' ? 'খালি করুন' : 'Clear'}
-          </Button>
+            {bn ? 'চেকআউট করুন' : 'Proceed to checkout'}
+            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+          </button>
         </div>
-      </BottomSheet>
+      </div>
     </div>
   );
 }

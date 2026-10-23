@@ -1,232 +1,231 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { TopAppBar } from '../../components/layout/TopAppBar';
-import { QuantityStepper } from '../../components/shared/ProductCard';
-import type { CartItem, MenuItem } from '../../types';
+import { SearchBar } from '../../components/ui/SearchBar';
+import { AddButton, QuantityStepper } from '../../components/ui/Stepper';
+import { addMenuItemToCart } from '../../lib/cartUtils';
+import { menuSearch } from '../../lib/search';
+import { tk, toBn } from '../../lib/format';
+import { asset } from '../../lib/asset';
+import type { MenuItem } from '../../types';
 
-/**
- * Restaurant menu — Stitch 13._restaurant_menu_jovro.
- * Reached from the restaurant cards on Home and Food
- * (/food/:id). Menu items are exact-price and add to the cart
- * as restaurant items, which checkout already supports.
- */
 export default function RestaurantMenuScreen() {
-  const { id } = useParams<{ id: string }>();
-  const { state, dispatch, cartCount, cartTotal, cartDeliveryFee } = useApp();
+  const { id } = useParams();
+  const { state, dispatch } = useApp();
   const navigate = useNavigate();
-  const lang = state.lang;
-  const bn = lang === 'bn';
+  const bn = state.lang === 'bn';
 
   const restaurant = state.restaurants.find(r => r.id === id);
+  const [query, setQuery] = useState('');
+  const [section, setSection] = useState('all');
 
-  const sections = useMemo(() => {
-    if (!restaurant) return [];
-    const groups = new Map<string, { labelBn: string; labelEn: string; items: MenuItem[] }>();
-    for (const item of restaurant.menuItems) {
-      const custom = item.section ?? item.category;
-      const key = custom ?? (item.isPopular ? '__popular' : '__single');
-      const group = groups.get(key) ?? {
-        labelBn: custom ?? (key === '__popular' ? 'সবচেয়ে বেশি অর্ডার হয়' : 'একক আইটেম'),
-        labelEn: custom ?? (key === '__popular' ? 'Most Ordered' : 'Single Items'),
-        items: [],
-      };
-      group.items.push(item);
-      groups.set(key, group);
-    }
-    return [...groups.values()];
-  }, [restaurant]);
+  const items = useMemo(
+    () => (restaurant ? menuSearch(restaurant, query) : []),
+    [restaurant, query],
+  );
 
   if (!restaurant) {
     return (
-      <div className="flex-1 flex flex-col bg-surface">
-        <TopAppBar showBack title={bn ? 'রেস্টুরেন্ট' : 'Restaurant'} />
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
-          <span className="material-symbols-outlined text-on-surface-variant/40 text-[56px]">restaurant_menu</span>
-          <p className="text-body-lg font-medium text-on-surface-variant">
-            {bn ? 'রেস্টুরেন্ট পাওয়া যায়নি' : 'Restaurant not found'}
-          </p>
-        </div>
+      <div className="screen-scroll bg-surface">
+        <button onClick={() => navigate(-1)} className="p-4"><span className="material-symbols-outlined">arrow_back</span></button>
+        <p className="p-8 text-center text-[14px] text-on-surface-variant">{bn ? 'রেস্টুরেন্ট পাওয়া যায়নি' : 'Restaurant not found'}</p>
       </div>
     );
   }
 
-  const name = bn ? restaurant.nameBn : restaurant.nameEn;
-  const heroImage = restaurant.imageUrl ?? restaurant.imageEmoji;
-  const heroIsUrl = !!heroImage && /^https?:\/\//.test(heroImage);
+  const sections = Array.from(new Set(restaurant.menuItems.map(m => bn ? (m.sectionBn ?? m.section ?? 'মেনু') : (m.section ?? 'Menu'))));
+  const visible = section === 'all' ? items : items.filter(m => (bn ? (m.sectionBn ?? m.section) : m.section) === section);
 
-  const addToCart = (item: MenuItem) => {
-    const cartItem: CartItem = {
-      id: item.id,
-      menuItemId: item.id,
-      restaurantId: restaurant.id,
-      nameBn: item.nameBn,
-      nameEn: item.nameEn,
-      price: item.price,
-      quantity: 1,
-      source: 'restaurant',
-      isApproxPrice: false,
-    };
-    dispatch({ type: 'ADD_TO_CART', item: cartItem });
-  };
+  const grouped = visible.reduce<Record<string, MenuItem[]>>((acc, item) => {
+    const key = bn ? (item.sectionBn ?? item.section ?? 'মেনু') : (item.section ?? 'Menu');
+    acc[key] = acc[key] ?? [];
+    acc[key].push(item);
+    return acc;
+  }, {});
 
-  const updateQty = (item: MenuItem, qty: number) => {
-    if (qty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: item.id });
-    else dispatch({ type: 'UPDATE_CART_QTY', id: item.id, qty });
-  };
+  const qtyFor = (itemId: string) => state.cart.find(c => c.id === itemId)?.quantity ?? 0;
 
   return (
-    <div className="flex-1 flex flex-col bg-surface overflow-hidden">
-      <TopAppBar
-        showBack
-        title={name}
-        subtitle={bn ? restaurant.cuisineTypeBn : restaurant.cuisineTypeEn}
-      />
+    <div className="screen-scroll bg-surface">
+      {/* Hero */}
+      <div className="relative h-[190px] w-full overflow-hidden bg-surface-container">
+        {(restaurant.coverImage ?? restaurant.image) && (
+          <img src={asset(restaurant.coverImage ?? restaurant.image)} alt={restaurant.nameEn} className="h-full w-full object-cover" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/25" />
 
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
-        {/* Hero — design 13 */}
-        <div className="mx-4 mt-4 bg-surface-container-lowest border border-outline-variant/40 rounded-3xl overflow-hidden">
-          <div className="h-32 bg-gradient-to-br from-surface-container to-surface-container-high flex items-center justify-center relative">
-            {heroIsUrl ? (
-              <img src={heroImage} alt={name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-[72px]">{heroImage}</span>
-            )}
-            {!restaurant.isOpen && (
-              <div className="absolute inset-0 bg-surface/60 flex items-center justify-center">
-                <span className="text-label-lg font-bold text-on-surface-variant bg-surface/85 px-3 py-1 rounded-full">
-                  {bn ? 'বন্ধ আছে' : 'Closed'}
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="p-4 flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-headline-sm font-bold text-on-surface leading-tight">{name}</p>
-                <p className="text-label-sm text-on-surface-variant mt-0.5 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[13px]">storefront</span>
-                  {bn ? restaurant.cuisineTypeBn : restaurant.cuisineTypeEn} • {restaurant.address}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 bg-success/10 rounded-full px-2 py-0.5 flex-shrink-0">
-                <span className="material-symbols-outlined text-[13px] text-success filled-symbol">star</span>
-                <span className="text-label-sm font-bold text-success">{restaurant.rating}</span>
-                <span className="text-label-sm text-on-surface-variant">({restaurant.ratingCount})</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={clsx(
-                'inline-flex items-center gap-1 text-label-sm font-semibold px-2 py-1 rounded-full',
-                restaurant.isOpen ? 'bg-primary/10 text-primary' : 'bg-error/10 text-error',
-              )}>
-                <span className="material-symbols-outlined text-[13px]">verified</span>
-                {restaurant.isOpen ? (bn ? 'খোলা আছে' : 'Open now') : (bn ? 'বন্ধ আছে' : 'Closed')}
-              </span>
-              <span className="inline-flex items-center gap-1 text-label-sm text-on-surface-variant bg-surface-container px-2 py-1 rounded-full">
-                <span className="material-symbols-outlined text-[13px]">schedule</span>
-                {restaurant.deliveryTimeMin} {bn ? 'মিনিট ডেলিভারি' : 'min delivery'}
-              </span>
-              <span className="inline-flex items-center gap-1 text-label-sm text-on-surface-variant bg-surface-container px-2 py-1 rounded-full">
-                <span className="material-symbols-outlined text-[13px]">pedal_bike</span>
-                {bn ? `ডেলিভারি ৳${cartDeliveryFee} • সর্বনিম্ন অর্ডার ৳${restaurant.minOrder}` : `Delivery ৳${cartDeliveryFee} • Min order ৳${restaurant.minOrder}`}
-              </span>
-            </div>
-            <p className="text-body-sm text-on-surface-variant leading-relaxed">
-              {bn
-                ? 'কোনো বাড়তি মেনু দাম নেই — রেস্টুরেন্টের নিজস্ব মেনু দামেই কেনা হয়, শুধু নির্দিষ্ট ডেলিভারি ফি প্রযোজ্য।'
-                : 'No menu markup — items are bought at the restaurant’s own menu prices; only the standard delivery fee applies.'}
-            </p>
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-3 pt-3">
+          <button onClick={() => navigate(-1)} className="grid h-9 w-9 place-items-center rounded-full bg-white/95 text-on-surface shadow-sm">
+            <span className="material-symbols-outlined text-[21px]">arrow_back</span>
+          </button>
+          <div className="flex gap-2">
+            <button className="grid h-9 w-9 place-items-center rounded-full bg-white/95 text-on-surface shadow-sm">
+              <span className="material-symbols-outlined text-[20px]">favorite_border</span>
+            </button>
+            <button className="grid h-9 w-9 place-items-center rounded-full bg-white/95 text-on-surface shadow-sm">
+              <span className="material-symbols-outlined text-[20px]">share</span>
+            </button>
           </div>
         </div>
 
-        {/* Menu sections — design 13 */}
-        {sections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center px-8">
-            <span className="material-symbols-outlined text-on-surface-variant/40 text-[56px]">restaurant_menu</span>
-            <p className="text-body-lg font-medium text-on-surface-variant">
-              {bn ? 'এখনো কোনো মেনু আইটেম নেই' : 'No menu items yet'}
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3">
+          <div className="min-w-0">
+            <span className={clsx(
+              'mb-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9.5px] font-bold',
+              restaurant.isOpen ? 'bg-primary text-white' : 'bg-error text-white',
+            )}>
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              {restaurant.isOpen ? (bn ? 'খোলা আছে' : 'Open now') : (bn ? 'বন্ধ' : 'Closed')}
+            </span>
+            <h1 className="truncate text-[21px] font-bold leading-tight text-white">{bn ? restaurant.nameBn : restaurant.nameEn}</h1>
+            <p className="truncate text-[11px] text-white/85">
+              {bn ? restaurant.cuisineTypeBn : restaurant.cuisineTypeEn} · {restaurant.areaBn ?? restaurant.address}
             </p>
           </div>
-        ) : (
-          sections.map(section => (
-            <div key={section.labelEn} className="mt-5">
-              <div className="flex items-center justify-between px-4 mb-2">
-                <h2 className="text-title-sm font-bold text-on-surface">{bn ? section.labelBn : section.labelEn}</h2>
-                <span className="text-label-sm text-on-surface-variant">
-                  {section.items.length} {bn ? 'টি আইটেম' : 'items'}
-                </span>
-              </div>
-              <div className="flex flex-col gap-2 px-4">
-                {section.items.map(item => {
-                  const cartItem = state.cart.find(i => i.id === item.id);
-                  const qty = cartItem?.quantity ?? 0;
-                  const unavailable = !restaurant.isOpen || !item.isAvailable;
+          <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-[11.5px] font-bold text-on-surface shadow-sm">
+            <span className="material-symbols-outlined filled-symbol text-[13px] text-amber-500">star</span>
+            {toBn(restaurant.rating.toFixed(1), state.lang)}
+            <span className="font-normal text-on-surface-variant">({toBn(restaurant.ratingCount, state.lang)})</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Info strip */}
+      <div className="flex items-center justify-between gap-2 border-b border-outline-variant/50 bg-surface-container-lowest px-4 py-2.5">
+        <span className="flex items-center gap-1.5 text-[11.5px] text-on-surface-variant">
+          <span className="material-symbols-outlined text-[16px] text-primary">schedule</span>
+          {toBn(restaurant.deliveryTimeMin, state.lang)}–{toBn(restaurant.deliveryTimeMin + 10, state.lang)} {bn ? 'মিনিট' : 'min'}
+        </span>
+        <span className="flex items-center gap-1.5 text-[11.5px] text-on-surface-variant">
+          <span className="material-symbols-outlined text-[16px] text-primary">pedal_bike</span>
+          {bn ? 'ডেলিভারি' : 'Delivery'} {tk(restaurant.deliveryFee ?? 40, state.lang)}
+        </span>
+        <span className="flex items-center gap-1.5 text-[11.5px] text-on-surface-variant">
+          <span className="material-symbols-outlined text-[16px] text-primary">shopping_basket</span>
+          {bn ? 'মিনিমাম' : 'Min'} {tk(restaurant.minOrder, state.lang)}
+        </span>
+      </div>
+
+      {!restaurant.isOpen && (
+        <div className="mx-4 mt-3 flex items-start gap-2 rounded-2xl border border-error/20 bg-error-soft p-3">
+          <span className="material-symbols-outlined text-[19px] text-error">schedule</span>
+          <div>
+            <p className="text-[12.5px] font-bold text-error">{bn ? 'রেস্টুরেন্ট এখন বন্ধ' : 'Restaurant is closed'}</p>
+            <p className="text-[11px] text-on-surface-variant">
+              {bn ? 'আগামীকাল আবার খুলবে। এখন অর্ডার নেওয়া যাচ্ছে না।' : 'Opens again tomorrow. Orders are paused right now.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="px-4 pb-40 pt-3">
+        <SearchBar
+          value={query}
+          onChange={setQuery}
+          placeholder={bn ? 'মেনুতে খুঁজুন...' : 'Search the menu...'}
+          showMic={false}
+        />
+
+        <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setSection('all')}
+            className={clsx('flex-shrink-0 rounded-full px-3 py-1.5 text-[11.5px] font-semibold', section === 'all' ? 'bg-primary text-white' : 'border border-outline-variant bg-surface-container-lowest text-on-surface')}
+          >
+            {bn ? 'সব' : 'All'} ({toBn(items.length, state.lang)})
+          </button>
+          {sections.map(s => (
+            <button
+              key={s}
+              onClick={() => setSection(s)}
+              className={clsx('flex-shrink-0 rounded-full px-3 py-1.5 text-[11.5px] font-semibold', section === s ? 'bg-primary text-white' : 'border border-outline-variant bg-surface-container-lowest text-on-surface')}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex flex-col gap-4">
+          {Object.entries(grouped).map(([name, group]) => (
+            <section key={name}>
+              <h2 className="mb-2 flex items-center gap-2 text-[14.5px] font-bold text-on-surface">
+                {name}
+                <span className="text-[11px] font-normal text-on-surface-variant">({toBn(group.length, state.lang)})</span>
+                <span className="h-px flex-1 bg-outline-variant/60" />
+              </h2>
+              <div className="flex flex-col gap-2">
+                {group.map(item => {
+                  const qty = qtyFor(item.id);
                   return (
-                    <div
-                      key={item.id}
-                      className={clsx(
-                        'flex items-center gap-3 bg-surface-container-lowest border border-outline-variant/40 rounded-3xl p-3',
-                        unavailable && 'opacity-60',
-                      )}
-                    >
-                      <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center text-[30px] flex-shrink-0">
-                        {item.imageEmoji ?? restaurant.imageEmoji}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-body-md font-medium text-on-surface leading-snug">
-                          {bn ? item.nameBn : item.nameEn}
-                          {item.isPopular && (
-                            <span className="ml-1.5 text-[10px] font-bold text-secondary bg-secondary/10 px-1.5 py-0.5 rounded-full align-middle">
-                              {bn ? 'বেস্ট সেলার' : 'Bestseller'}
-                            </span>
-                          )}
-                        </p>
-                        {item.description && (
-                          <p className="text-label-sm text-on-surface-variant mt-0.5 line-clamp-2">{item.description}</p>
-                        )}
-                        <p className="text-label-lg font-bold text-primary mt-0.5">৳{item.price}</p>
-                      </div>
-                      <div className="flex-shrink-0">
-                        {unavailable ? (
-                          <span className="text-label-sm text-on-surface-variant">
-                            {!restaurant.isOpen ? (bn ? 'বন্ধ' : 'Closed') : (bn ? 'পাওয়া যাচ্ছে না' : 'Unavailable')}
-                          </span>
-                        ) : qty > 0 ? (
-                          <QuantityStepper qty={qty} onIncrease={() => updateQty(item, qty + 1)} onDecrease={() => updateQty(item, qty - 1)} />
+                    <article key={item.id} className={clsx('flex gap-3 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-2.5 shadow-card', !item.isAvailable && 'opacity-60')}>
+                      <div className="relative h-[76px] w-[76px] flex-shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                        {item.image ?? restaurant.image ? (
+                          <img src={asset(item.image ?? restaurant.image)} alt={item.nameEn} className="h-full w-full object-cover" loading="lazy" />
                         ) : (
-                          <button
-                            onClick={() => addToCart(item)}
-                            className="h-9 px-3.5 rounded-full bg-primary text-white text-label-md font-semibold flex items-center gap-1 active:scale-90 transition-transform shadow-sm"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">add</span>
-                            {bn ? 'যোগ করুন' : 'Add'}
-                          </button>
+                          <div className="grid h-full w-full place-items-center bg-secondary-soft text-[28px]">{restaurant.imageEmoji ?? '🍽️'}</div>
+                        )}
+                        {item.isPopular && (
+                          <span className="absolute left-1 top-1 rounded bg-secondary px-1 py-0.5 text-[8px] font-bold text-white">
+                            {bn ? 'জনপ্রিয়' : 'Popular'}
+                          </span>
                         )}
                       </div>
-                    </div>
+
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-[13.5px] font-bold leading-snug text-on-surface">{bn ? item.nameBn : item.nameEn}</h3>
+                        <p className="truncate text-[10.5px] text-on-surface-variant">{bn ? item.nameEn : item.nameBn}</p>
+                        {item.servesBn && (
+                          <p className="text-[10px] text-on-surface-variant">
+                            <span className="material-symbols-outlined align-middle text-[12px]">group</span> {bn ? item.servesBn : item.servesEn}
+                          </p>
+                        )}
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="text-[15px] font-bold text-on-surface">{tk(item.price, state.lang)}</span>
+                          {!item.isAvailable ? (
+                            <span className="text-[10.5px] font-semibold text-on-surface-variant">{bn ? 'শেষ হয়ে গেছে' : 'Sold out'}</span>
+                          ) : qty > 0 ? (
+                            <QuantityStepper
+                              qty={qty}
+                              onDecrease={() => dispatch({ type: 'UPDATE_CART_QTY', id: item.id, qty: qty - 1 })}
+                              onIncrease={() => addMenuItemToCart(dispatch, restaurant, item)}
+                            />
+                          ) : (
+                            <AddButton
+                              onClick={() => addMenuItemToCart(dispatch, restaurant, item)}
+                              size="sm"
+                              labelBn={bn ? 'যোগ করুন' : 'Add'}
+                              labelEn=""
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </article>
                   );
                 })}
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            </section>
+          ))}
 
-      {/* View-cart bar — design 13 */}
-      {cartCount > 0 && (
-        <div className="px-4 py-3 bg-surface border-t border-outline-variant/30">
-          <button
-            onClick={() => navigate('/cart')}
-            className="w-full h-12 rounded-full bg-primary text-on-primary flex items-center justify-center gap-2 font-label-lg font-bold shadow-md active:scale-[0.98] transition-transform"
-          >
-            <span className="material-symbols-outlined text-[20px]">shopping_bag</span>
-            <span>{bn ? `কার্ট দেখুন • ${cartCount}টি (৳${cartTotal})` : `View cart • ${cartCount} items (৳${cartTotal})`}</span>
-            <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
-          </button>
+          {visible.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-lowest p-8 text-center">
+              <span className="material-symbols-outlined text-[34px] text-on-surface-variant/50">search_off</span>
+              <p className="mt-2 text-[13px] font-semibold text-on-surface">{bn ? 'এই মেনুতে কিছু পাওয়া যায়নি' : 'Nothing on this menu'}</p>
+            </div>
+          )}
+
+          <div className="rounded-2xl bg-primary-tint p-3">
+            <p className="flex items-center gap-1.5 text-[12px] font-bold text-primary-deep">
+              <span className="material-symbols-outlined text-[17px]">verified_user</span>
+              {bn ? 'রেস্টুরেন্টের দামেই, কোনো বাড়তি নেই' : 'Restaurant price, no markup'}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-on-surface-variant">
+              {bn
+                ? 'খাবারের দাম রেস্টুরেন্টের নিজস্ব মেনু অনুযায়ী — Jovro শুধু ডেলিভারি চার্জ নেয়।'
+                : 'Food prices follow the restaurant menu. Jovro only charges the delivery fee.'}
+            </p>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

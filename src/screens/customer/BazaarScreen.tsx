@@ -1,117 +1,156 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { TopAppBar } from '../../components/layout/TopAppBar';
-import { IconButton } from '../../components/ui/Button';
+import { PageHeader } from '../../components/layout/Headers';
+import { SearchBar } from '../../components/ui/SearchBar';
 import { ProductCard } from '../../components/shared/ProductCard';
-import { Input } from '../../components/ui/Input';
+import { CATEGORY_INFO, CATEGORY_ORDER } from '../../data/products';
+import { productScore } from '../../lib/search';
+import { toBn } from '../../lib/format';
 import type { ProductCategory } from '../../types';
 
-const CATEGORIES: { id: ProductCategory | 'all'; labelBn: string; labelEn: string; icon: string }[] = [
-  { id: 'all', labelBn: 'সব', labelEn: 'All', icon: '🛒' },
-  { id: 'rice-pulses', labelBn: 'চাল-ডাল', labelEn: 'Rice & Pulses', icon: '🌾' },
-  { id: 'oil-spices', labelBn: 'তেল-মসলা', labelEn: 'Oil & Spices', icon: '🫙' },
-  { id: 'vegetables', labelBn: 'সবজি', labelEn: 'Vegetables', icon: '🥬' },
-  { id: 'fish-meat', labelBn: 'মাছ-মাংস', labelEn: 'Fish & Meat', icon: '🐟' },
-  { id: 'milk-eggs', labelBn: 'দুধ-ডিম', labelEn: 'Milk & Eggs', icon: '🥚' },
-  { id: 'snacks', labelBn: 'নাস্তা', labelEn: 'Snacks', icon: '🍪' },
-];
+type Tab = ProductCategory | 'all';
 
 export default function BazaarScreen() {
   const { state } = useApp();
-  const lang = state.lang;
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const bn = state.lang === 'bn';
 
+  const initial = (params.get('category') as Tab) ?? 'all';
+  const [tab, setTab] = useState<Tab>(CATEGORY_ORDER.includes(initial as ProductCategory) ? initial : 'all');
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<ProductCategory | 'all'>('all');
-  const [layout, setLayout] = useState<'grid' | 'list'>('grid');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
 
-  const filtered = useMemo(() => {
-    let items = state.products;
-    if (category !== 'all') items = items.filter(p => p.category === category);
+  // Keep the chip row in sync when the URL changes (e.g. home category tap).
+  useEffect(() => {
+    const next = params.get('category') as Tab | null;
+    setTab(next && CATEGORY_ORDER.includes(next as ProductCategory) ? next : 'all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  const products = useMemo(() => {
+    let list = state.products;
+    if (tab !== 'all') list = list.filter(p => p.category === tab);
+    if (onlyAvailable) list = list.filter(p => p.isAvailable);
     if (query.trim()) {
-      const q = query.toLowerCase();
-      items = items.filter(p =>
-        p.nameBn.includes(query) ||
-        p.nameEn.toLowerCase().includes(q) ||
-        (p.tags ?? []).some(t => t.includes(q)),
-      );
+      list = list
+        .map(p => ({ p, score: productScore(p, query) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.p);
     }
-    return items;
-  }, [query, category, state.products]);
+    return list;
+  }, [state.products, tab, query, onlyAvailable]);
+
+  const selectTab = (id: Tab) => {
+    setTab(id);
+    setParams(id === 'all' ? {} : { category: id });
+  };
+
+  const total = state.products.length;
+  const available = state.products.filter(p => p.isAvailable).length;
 
   return (
-    <div className="flex-1 flex flex-col bg-surface overflow-hidden">
-      <TopAppBar
+    <div className="screen-scroll bg-surface">
+      <PageHeader
+        title={bn ? 'বাজার' : 'Bazaar'}
+        subtitle={bn ? 'গোশালা কাঁচাবাজার ও মুদি আইটেম' : 'Goshala fresh & grocery items'}
         showBack
-        title={lang === 'bn' ? 'বাজার' : 'Bazaar'}
-        subtitle={lang === 'bn' ? 'তাজা পণ্য, বাজারদর' : 'Fresh items, market price'}
-        actions={
-          <IconButton
-            icon={layout === 'grid' ? 'view_list' : 'grid_view'}
-            onClick={() => setLayout(l => l === 'grid' ? 'list' : 'grid')}
-          />
-        }
+        onBack={() => navigate('/')}
+        showLang
       />
 
-      {/* Sticky search + categories */}
-      <div className="flex flex-col gap-3 px-4 py-3 bg-surface sticky top-14 z-20 shadow-sm">
-        <Input
-          type="search"
-          placeholder={lang === 'bn' ? 'পণ্যের নাম লিখুন...' : 'Search products...'}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          icon="search"
-          iconEnd={query ? 'close' : undefined}
-          onIconEndClick={() => setQuery('')}
-        />
+      <div className="flex flex-col gap-3 pt-3">
+        <div className="px-4">
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            placeholder={bn ? 'পণ্যের নাম খুঁজুন... / Search product' : 'Search product...'}
+            showFilter
+            onFilter={() => setOnlyAvailable(v => !v)}
+          />
+        </div>
 
         {/* Category chips */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setCategory(cat.id)}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-label-md font-medium whitespace-nowrap border transition-all flex-shrink-0',
-                category === cat.id
-                  ? 'bg-primary text-white border-primary'
-                  : 'bg-surface-container text-on-surface-variant border-outline-variant',
-              )}
-            >
-              <span className="text-[14px]">{cat.icon}</span>
-              {lang === 'bn' ? cat.labelBn : cat.labelEn}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Products */}
-      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-4">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <span className="material-symbols-outlined text-on-surface-variant/40 text-[56px]">search_off</span>
-            <p className="text-body-lg font-medium text-on-surface-variant">
-              {lang === 'bn' ? 'কোনো পণ্য পাওয়া যায়নি' : 'No products found'}
-            </p>
-            {query && (
-              <button
-                onClick={() => setQuery('')}
-                className="text-primary text-body-sm font-medium"
-              >
-                {lang === 'bn' ? 'সার্চ মুছুন' : 'Clear search'}
-              </button>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1">
+          <button
+            onClick={() => selectTab('all')}
+            className={clsx(
+              'flex flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-semibold transition-all',
+              tab === 'all' ? 'border-primary bg-primary text-white' : 'border-outline-variant bg-surface-container-lowest text-on-surface',
             )}
+          >
+            {bn ? 'সব' : 'All'} <span className={clsx('text-[10px]', tab === 'all' ? 'text-white/80' : 'text-on-surface-variant')}>All</span>
+          </button>
+          {CATEGORY_ORDER.map(cat => {
+            const info = CATEGORY_INFO[cat];
+            const active = tab === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => selectTab(cat)}
+                className={clsx(
+                  'flex flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-semibold transition-all',
+                  active ? 'border-primary bg-primary text-white' : 'border-outline-variant bg-surface-container-lowest text-on-surface',
+                )}
+              >
+                {active && <span className="material-symbols-outlined text-[14px]">check</span>}
+                {bn ? info.nameBn : info.nameEn}
+                <span className={clsx('text-[10px] font-normal', active ? 'text-white/80' : 'text-on-surface-variant')}>
+                  {info.nameEn}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Count strip */}
+        <div className="mx-4 flex items-center justify-between gap-2 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 shadow-card">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-deep">
+              <span className="material-symbols-outlined text-[17px]">inventory_2</span>
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[12px] font-bold text-on-surface">
+                {bn ? `মোট ${toBn(products.length, 'bn')}টি আইটেম` : `${products.length} total items`}
+                <span className="mx-1 text-on-surface-variant">•</span>
+                {bn ? `${toBn(products.filter(p => p.isAvailable).length, 'bn')}টি পাওয়া যায়` : `${products.filter(p => p.isAvailable).length} available`}
+              </p>
+              <p className="truncate text-[10.5px] text-on-surface-variant">
+                {total} Total Items • {available} Available in Market
+              </p>
+            </div>
           </div>
-        ) : layout === 'grid' ? (
-          <div className="grid grid-cols-2 gap-3 pt-3">
-            {filtered.map(p => (
-              <ProductCard key={p.id} product={p} layout="grid" />
-            ))}
+          <button
+            onClick={() => navigate('/delivery-fees')}
+            className="flex flex-shrink-0 items-center gap-1 rounded-full border border-secondary-bright/40 bg-secondary-soft px-2.5 py-1 text-[10.5px] font-semibold text-secondary"
+          >
+            <span className="material-symbols-outlined text-[13px]">receipt_long</span>
+            {bn ? 'রসিদ যাচাই' : 'Receipt check'}
+          </button>
+        </div>
+
+        {/* Product list */}
+        {products.length === 0 ? (
+          <div className="mx-4 rounded-2xl border border-dashed border-outline-variant bg-surface-container-lowest p-8 text-center">
+            <span className="material-symbols-outlined text-[38px] text-on-surface-variant/50">search_off</span>
+            <p className="mt-2 text-[14px] font-semibold text-on-surface">{bn ? 'এই ক্যাটাগরিতে কিছু পাওয়া যায়নি' : 'Nothing found here'}</p>
+            <p className="mt-1 text-[11.5px] text-on-surface-variant">
+              {bn ? 'লিখে দিন — বাজার থেকে কিনে এনে দেওয়া হবে।' : 'Write it down — our shopper will buy it for you.'}
+            </p>
+            <button
+              onClick={() => navigate(`/ai?q=${encodeURIComponent(query)}`)}
+              className="mt-3 rounded-full bg-primary px-4 py-2 text-[12px] font-semibold text-white"
+            >
+              {bn ? 'সহায়ককে জানান' : 'Ask the assistant'}
+            </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 pt-3">
-            {filtered.map(p => (
-              <ProductCard key={p.id} product={p} layout="list" />
+          <div className="flex flex-col gap-2.5 px-4 pb-40">
+            {products.map(p => (
+              <ProductCard key={p.id} product={p} variant="search" />
             ))}
           </div>
         )}

@@ -1,310 +1,470 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
-import { HomeTopBar } from '../../components/layout/TopAppBar';
-import { OrderCard } from '../../components/shared/OrderCard';
+import { HomeHeader, ServiceHoursStrip, SectionHeading } from '../../components/layout/Headers';
+import { SearchBar } from '../../components/ui/SearchBar';
 import { ProductCard } from '../../components/shared/ProductCard';
+import { RestaurantCard } from '../../components/shared/RestaurantCard';
 import { EarnMoneyCard } from '../../components/shared/EarnMoneyCard';
-import type { Restaurant } from '../../types';
+import { CATEGORY_INFO, CATEGORY_ORDER } from '../../data/products';
+import { countdownParts, toBn } from '../../lib/format';
+import { asset } from '../../lib/asset';
+import type { Product } from '../../types';
 
-// ── Promo Banner ────────────────────────────────────────────────
-function PromoBanner() {
-  const { state, t } = useApp();
-  const lang = state.lang;
-  const promo = state.promos.find(p => p.isActive);
-  const banner = state.adminSettings.banners.find(b => b.isActive);
-  if (!promo && !banner) return null;
-  if (!promo && banner) return (<div className="mx-4 rounded-3xl bg-gradient-to-r from-secondary to-secondary/80 p-4 flex items-center gap-3"><span className="text-[34px]">{banner.image}</span><div className="flex-1"><p className="text-label-lg font-bold text-white">{lang === 'bn' ? banner.headlineBn : banner.headlineEn}</p><p className="text-label-sm text-white/80">{lang === 'bn' ? banner.subBn : banner.subEn}</p></div></div>);
-  if (!promo) return null;
-  return (
-    <div className="mx-4 rounded-3xl bg-gradient-to-r from-primary to-primary/80 p-4 flex items-center gap-3">
-      <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-        <span className="material-symbols-outlined text-white text-[22px]">local_offer</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-label-lg font-bold text-white">
-          {lang === 'bn' ? promo.descriptionBn : promo.descriptionEn}
-        </p>
-        <p className="text-label-sm text-white/80 mt-0.5">
-          {lang === 'bn' ? `কোড: ${promo.code}` : `Code: ${promo.code}`}
-        </p>
-      </div>
-      <span className="material-symbols-outlined text-white/80 text-[18px]">chevron_right</span>
-    </div>
-  );
+// ── Banner carousel ─────────────────────────────────────────────
+interface Slide {
+  eyebrowBn: string;
+  eyebrowEn: string;
+  titleBn: string;
+  titleEn: string;
+  sub: string;
+  code?: string;
+  image: string;
+  path: string;
 }
 
-// ── AI Assistant entry card ─────────────────────────────────────
-function AiEntryCard() {
-  const { state } = useApp();
-  const navigate = useNavigate();
-  const lang = state.lang;
-  return (
-    <button
-      onClick={() => navigate('/ai')}
-      className="mx-4 rounded-3xl bg-gradient-to-r from-tertiary to-tertiary/80 p-4 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
-    >
-      <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-        <span className="material-symbols-outlined text-white text-[24px]">smart_toy</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-label-lg font-bold text-white">
-          {lang === 'bn' ? 'সহায়ককে লিখে দিন' : 'Ask the Assistant'}
-        </p>
-        <p className="text-label-sm text-white/85 mt-0.5">
-          {lang === 'bn'
-            ? '"৫ কেজি চাল আর ১ লিটার তেল দাও" — লিখলেই কার্টে যোগ হবে'
-            : '"5 kg rice and 1 litre oil" — it goes straight to your cart'}
-        </p>
-      </div>
-      <span className="material-symbols-outlined text-white/80 text-[18px]">chevron_right</span>
-    </button>
-  );
-}
+const SLIDES: Slide[] = [
+  {
+    eyebrowBn: 'লালমনিরহাট সদর অফার',
+    eyebrowEn: 'Lalmonirhat Sadar offer',
+    titleBn: 'প্রথম অর্ডারে ডেলিভারি ফ্রি!',
+    titleEn: 'Free delivery on your first order!',
+    sub: 'Free delivery on your first grocery & food order',
+    code: 'JOVROFREE',
+    image: '/img/banner-cart.jpg',
+    path: '/bazaar',
+  },
+  {
+    eyebrowBn: 'শুভবিবাহের বাজার',
+    eyebrowEn: 'Wedding bazaar',
+    titleBn: 'বিয়ের বাজার — এক কলেই',
+    titleEn: 'Wedding shopping, one call away',
+    sub: 'Bulk bazaar lists bought & delivered by our shoppers',
+    image: '/img/bazaar-stalls.jpg',
+    path: '/bazaar',
+  },
+  {
+    eyebrowBn: 'রেস্টুরেন্ট খায়া',
+    eyebrowEn: 'Restaurant deals',
+    titleBn: 'গরম বিরিয়ানি, দরজায় এসে',
+    titleEn: 'Hot biryani at your door',
+    sub: 'Nanna Biryani · Rongdhonu · Nawab Kacchi',
+    image: '/img/food-spread.jpg',
+    path: '/food',
+  },
+];
 
-// ── Service Closed / Slot Full Banner (Stitch g3, part 1) ─────
-function ServiceBanner({ type }: { type: 'closed' | 'slot_full' }) {
+function BannerCarousel() {
   const { state } = useApp();
   const navigate = useNavigate();
-  const lang = state.lang;
-  const bn = lang === 'bn';
-  const isClosed = type === 'closed';
+  const bn = state.lang === 'bn';
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setIndex(i => (i + 1) % SLIDES.length), 5200);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
-    <div className="mx-4 bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/30 relative overflow-hidden">
-      <div className={clsx(
-        'absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r',
-        isClosed ? 'from-secondary-container via-[#F97316] to-secondary' : 'from-tertiary-container via-tertiary to-tertiary-container',
-      )} />
-      <div className="flex flex-col items-center text-center mt-1">
-        <div className={clsx(
-          'w-14 h-14 rounded-full border flex items-center justify-center mb-3',
-          isClosed ? 'bg-[#FFF7ED] border-[#F97316]/20 text-secondary' : 'bg-tertiary/10 border-tertiary/20 text-tertiary',
-        )}>
-          <span className="material-symbols-outlined text-3xl">{isClosed ? 'schedule' : 'event_busy'}</span>
+    <section className="px-4">
+      <div className="overflow-hidden rounded-3xl">
+        <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${index * 100}%)` }}>
+          {SLIDES.map(slide => (
+            <button
+              key={slide.code ?? slide.titleEn}
+              onClick={() => navigate(slide.path)}
+              className="relative flex h-[150px] w-full flex-shrink-0 items-stretch overflow-hidden bg-gradient-to-br from-[#0F8A4E] via-primary-deep to-[#0A7040] p-3.5 text-left"
+            >
+              <div className="relative z-10 flex min-w-0 flex-[1.35] flex-col">
+                <span className="w-fit rounded-full bg-white/18 px-2 py-0.5 text-[9.5px] font-semibold text-white">
+                  {bn ? slide.eyebrowBn : slide.eyebrowEn}
+                </span>
+                <h3 className="mt-1.5 text-[19px] font-bold leading-[1.25] text-white">
+                  {bn ? slide.titleBn : slide.titleEn}
+                </h3>
+                <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-white/85">{slide.sub}</p>
+
+                <div className="mt-auto flex items-center gap-2 pt-1.5">
+                  {slide.code && (
+                    <>
+                      <span className="rounded-md border border-dashed border-white/75 bg-white/10 px-2 py-0.5 text-[10.5px] font-bold tracking-wide text-white">
+                        {slide.code}
+                      </span>
+                      <span className="text-[10px] text-white/80">{bn ? 'কুপন কোড' : 'Coupon code'}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="relative ml-2 w-[38%] flex-shrink-0">
+                <img src={asset(slide.image)} alt="" className="h-full w-full rounded-xl object-cover" loading="lazy" />
+                <span className="absolute inset-0 rounded-xl ring-1 ring-white/25" />
+              </div>
+            </button>
+          ))}
         </div>
-        <h2 className="text-headline-sm font-headline-sm text-on-surface font-bold mb-0.5">
-          {isClosed
-            ? (bn ? 'এখন সার্ভিস বন্ধ আছে' : 'Service is closed right now')
-            : (bn ? 'আজকের সব স্লট পূর্ণ হয়ে গেছে' : 'All of today\u2019s slots are full')}
-        </h2>
-        <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant mb-2">
-          {isClosed ? 'We are closed right now' : 'Today\u2019s slots are full'}
-        </p>
-        <div className="inline-flex items-center gap-1.5 bg-surface-container px-3 py-1.5 rounded-full mb-2.5">
-          <span className="material-symbols-outlined text-primary text-base">alarm_on</span>
-          <p className="text-body-sm font-body-sm text-on-surface font-semibold">
-            {isClosed ? (
-              <>{bn ? 'আবার খুলবে: ' : 'Opens again: '}<span className="text-primary font-bold">{bn ? 'আগামীকাল সকাল ৬:০০ টা' : 'tomorrow at 6:00 AM'}</span></>
-            ) : (
-              <>{bn ? 'কাল সকালের স্লটে আবার চেষ্টা করুন' : 'Try again in tomorrow morning\u2019s slot'}</>
-            )}
-          </p>
-        </div>
-        <p className="text-body-sm font-body-sm text-on-surface-variant bg-surface-container-low px-3.5 py-2 rounded-xl mb-4 leading-relaxed">
-          {isClosed
-            ? (bn
-              ? '"আমাদের রাইডার ও পার্সোনাল শপারগণ এখন বিশ্রামে আছেন। আপনার পছন্দের বাজার বা খাবারের জন্য নির্বিঘ্নে অগ্রিম অর্ডার দিয়ে রাখুন।"'
-              : '"Our riders and personal shoppers are resting now. Feel free to place an advance order for your favourite bazaar items or food."')
-            : (bn
-              ? '"আজকের প্রতিটি স্লটের সব রাইডার বুকড হয়ে গেছেন। কালকের স্লটের জন্য এখনই আগাম অর্ডার দিয়ে রাখতে পারেন।"'
-              : '"Every rider for today\u2019s slots is booked. You can place an advance order for tomorrow\u2019s slot right now."')}
-        </p>
-        <button
-          onClick={() => navigate('/bazaar')}
-          className="w-full h-12 rounded-full bg-primary active:scale-95 duration-150 text-white font-label-lg text-label-lg flex items-center justify-center gap-2 shadow-sm transition-all"
-        >
-          <span className="material-symbols-outlined text-lg">event_note</span>
-          <span>{bn ? 'পরের স্লটের জন্য আগাম অর্ডার করুন' : 'Pre-order for the next slot'}</span>
-        </button>
-        <span className="text-bilingual-sub font-bilingual-sub text-outline mt-1.5">
-          Pre-order for next slot
-        </span>
       </div>
-    </div>
+
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          {SLIDES.map((s, i) => (
+            <button
+              key={s.titleEn}
+              onClick={() => setIndex(i)}
+              aria-label={`slide ${i + 1}`}
+              className={clsx('h-1.5 rounded-full transition-all', i === index ? 'w-5 bg-primary' : 'w-1.5 bg-outline-variant')}
+            />
+          ))}
+        </div>
+        <div className="flex gap-1.5">
+          <button onClick={() => navigate('/bazaar')} className="rounded-full border border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-[9.5px] text-on-surface-variant">
+            ({bn ? '২' : '2'}) {bn ? 'শুভবিবাহের বাজার' : 'Wedding bazaar'}
+          </button>
+          <button onClick={() => navigate('/food')} className="rounded-full border border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-[9.5px] text-on-surface-variant">
+            ({bn ? '৩' : '3'}) {bn ? 'রেস্টুরেন্ট খায়া' : 'Restaurant deals'}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
-// ── Quick Actions ───────────────────────────────────────────────
-function QuickActions() {
+// ── Two shopping entrances ─────────────────────────────────────
+function EntryCards() {
   const { state } = useApp();
   const navigate = useNavigate();
-  const lang = state.lang;
+  const bn = state.lang === 'bn';
 
-  const actions = [
-    { icon: 'storefront', labelBn: 'বাজার', labelEn: 'Bazaar', path: '/bazaar', color: 'bg-primary/10 text-primary' },
-    { icon: 'restaurant', labelBn: 'খাবার', labelEn: 'Food', path: '/food', color: 'bg-secondary/10 text-secondary' },
-    { icon: 'smart_toy', labelBn: 'AI সহকারী', labelEn: 'AI Help', path: '/ai', color: 'bg-tertiary/10 text-tertiary' },
+  const cards = [
+    {
+      path: '/bazaar',
+      eyebrow: bn ? 'গোশালা বাজারের সেরা বাজার' : 'Goshala Bazar picks',
+      titleBn: 'কাঁচাবাজার',
+      titleEn: 'Bazaar Grocery',
+      image: '/img/bazaar-stalls.jpg',
+      tone: 'primary' as const,
+    },
+    {
+      path: '/food',
+      eyebrow: bn ? 'স্থানীয় সেরা রেস্টুরেন্ট' : 'Best local restaurants',
+      titleBn: 'রেস্টুরেন্টের খাবার',
+      titleEn: 'Restaurant Food',
+      image: '/img/food-spread.jpg',
+      tone: 'secondary' as const,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-2 px-4">
-      {actions.map(a => (
+    <section className="grid grid-cols-2 gap-2.5 px-4">
+      {cards.map(card => (
         <button
-          key={a.path}
-          onClick={() => navigate(a.path)}
-          className="flex flex-col items-center gap-1.5 py-3"
+          key={card.path}
+          onClick={() => navigate(card.path)}
+          className="overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest p-2 text-left shadow-card active:scale-[0.99]"
         >
-          <div className={clsx('w-14 h-14 rounded-2xl flex items-center justify-center', a.color)}>
-            <span className="material-symbols-outlined text-[26px]">{a.icon}</span>
-          </div>
-          <span className="text-label-sm text-on-surface-variant font-medium text-center leading-tight">
-            {lang === 'bn' ? a.labelBn : a.labelEn}
+          <span
+            className={clsx(
+              'inline-block rounded-md px-1.5 py-0.5 text-[9px] font-semibold',
+              card.tone === 'primary' ? 'bg-primary-soft text-primary-deep' : 'bg-secondary-soft text-secondary',
+            )}
+          >
+            {card.eyebrow}
           </span>
+          <h3 className="mt-1 text-[16px] font-bold leading-tight text-on-surface">{bn ? card.titleBn : card.titleEn}</h3>
+          <p className="text-[10.5px] leading-tight text-on-surface-variant">{card.titleEn}</p>
+          <div className="relative mt-1.5">
+            <img src={asset(card.image)} alt="" className="h-[74px] w-full rounded-xl object-cover" loading="lazy" />
+            <span
+              className={clsx(
+                'absolute bottom-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full text-white shadow-sm',
+                card.tone === 'primary' ? 'bg-primary' : 'bg-secondary-bright',
+              )}
+            >
+              <span className="material-symbols-outlined text-[17px]">arrow_forward</span>
+            </span>
+          </div>
         </button>
       ))}
-    </div>
+    </section>
   );
 }
 
-// ── Section Header ──────────────────────────────────────────────
-function SectionHeader({ titleBn, titleEn, onSeeAll }: { titleBn: string; titleEn: string; onSeeAll?: () => void }) {
+// ── Category rail ──────────────────────────────────────────────
+function CategoryRail() {
   const { state } = useApp();
-  const lang = state.lang;
-  return (
-    <div className="flex items-center justify-between px-4">
-      <h2 className="text-title-sm font-bold text-on-surface">
-        {lang === 'bn' ? titleBn : titleEn}
-      </h2>
-      {onSeeAll && (
-        <button onClick={onSeeAll} className="text-label-md text-primary font-medium">
-          {lang === 'bn' ? 'সব দেখুন' : 'See all'}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ── Active Order Banner ─────────────────────────────────────────
-function ActiveOrderBanner() {
-  const { state } = useApp();
-  const lang = state.lang;
-  const active = state.orders.find(o => ['pending', 'confirmed', 'buying', 'on-the-way'].includes(o.status));
-  if (!active) return null;
-
-  return (
-    <div className="px-4">
-      <OrderCard order={active} compact />
-    </div>
-  );
-}
-
-// ── Restaurant Card ─────────────────────────────────────────────
-function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
-  const { state } = useApp();
-  const lang = state.lang;
   const navigate = useNavigate();
+  const bn = state.lang === 'bn';
 
   return (
-    <button
-      onClick={() => navigate(`/food/${restaurant.id}`)}
-      className="flex items-center gap-3 bg-surface-container-lowest border border-outline-variant/40 rounded-3xl p-3 w-full text-left active:bg-surface-container transition-colors"
-    >
-      {/* Emoji */}
-      <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center text-[36px] flex-shrink-0">
-        {restaurant.imageEmoji}
+    <section>
+      <SectionHeading
+        titleBn="ক্যাটাগরি ব্রাউজ করুন"
+        titleEn="Browse categories"
+        actionBn="সব দেখুন"
+        actionEn="See all"
+        onAction={() => navigate('/bazaar')}
+      />
+      <div className="no-scrollbar mt-2.5 flex gap-3 overflow-x-auto px-4 pb-1">
+        {CATEGORY_ORDER.map(cat => {
+          const info = CATEGORY_INFO[cat];
+          return (
+            <button
+              key={cat}
+              onClick={() => navigate(`/bazaar?category=${cat}`)}
+              className="flex w-[62px] flex-shrink-0 flex-col items-center gap-1.5"
+            >
+              <span className="grid h-[52px] w-[52px] place-items-center rounded-full border border-outline-variant/70 bg-surface-container-lowest shadow-card">
+                <span className={clsx('material-symbols-outlined text-[24px]', cat === 'oil-spices' || cat === 'milk-eggs' ? 'text-secondary' : cat === 'fish-meat' ? 'text-[#0B6E99]' : 'text-primary')}>
+                  {info.icon}
+                </span>
+              </span>
+              <span className="text-center text-[11px] font-semibold leading-tight text-on-surface">
+                {bn ? info.nameBn : info.nameEn}
+              </span>
+              <span className="text-center text-[9px] leading-tight text-on-surface-variant">{info.nameEn}</span>
+            </button>
+          );
+        })}
       </div>
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-body-md font-semibold text-on-surface truncate">
-            {lang === 'bn' ? restaurant.nameBn : restaurant.nameEn}
-          </p>
-          {!restaurant.isOpen && (
-            <span className="text-[10px] bg-error/10 text-error px-2 py-0.5 rounded-full flex-shrink-0">
-              {lang === 'bn' ? 'বন্ধ' : 'Closed'}
-            </span>
-          )}
-        </div>
-        <p className="text-label-sm text-on-surface-variant">
-          {lang === 'bn' ? restaurant.cuisineTypeBn : restaurant.cuisineTypeEn}
-        </p>
-        <div className="flex items-center gap-3 mt-1">
-          <div className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-[13px] text-warning filled-symbol">star</span>
-            <span className="text-label-sm font-medium text-on-surface">{restaurant.rating}</span>
-          </div>
-          <div className="flex items-center gap-1 text-on-surface-variant">
-            <span className="material-symbols-outlined text-[13px]">schedule</span>
-            <span className="text-label-sm">{restaurant.deliveryTimeMin} {lang === 'bn' ? 'মি' : 'min'}</span>
-          </div>
-          <div className="flex items-center gap-1 text-on-surface-variant">
-            <span className="material-symbols-outlined text-[13px]">payments</span>
-            <span className="text-label-sm">min ৳{restaurant.minOrder}</span>
-          </div>
-        </div>
-      </div>
-      <span className="material-symbols-outlined text-on-surface-variant/50 text-[18px] flex-shrink-0">chevron_right</span>
-    </button>
+    </section>
   );
 }
 
-// ── Main HomeScreen ─────────────────────────────────────────────
+// ── Flash sale ─────────────────────────────────────────────────
+function FlashSale({ products }: { products: Product[] }) {
+  const { state } = useApp();
+  const bn = state.lang === 'bn';
+  const end = useRef(Date.now() + 5 * 3600 * 1000 + 30 * 60 * 1000);
+  const [left, setLeft] = useState(end.current - Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setLeft(end.current - Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const { h, m, s } = countdownParts(left);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <section className="mx-4 rounded-3xl border border-[#F3E3D5] bg-[#FDF6EF] px-3 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-secondary-bright/12 text-secondary-bright">
+            <span className="material-symbols-outlined filled-symbol text-[20px]">bolt</span>
+          </span>
+          <div>
+            <h2 className="text-[17px] font-bold leading-tight text-secondary">{bn ? 'ফ্ল্যাশ মেল' : 'Flash Sale'}</h2>
+            <p className="text-[10.5px] leading-tight text-on-surface-variant">Flash Sale Deals</p>
+          </div>
+        </div>
+        <span className="flex items-center gap-1 rounded-full border border-secondary-bright/30 bg-white px-2.5 py-1 text-[11px] font-bold text-secondary">
+          <span className="material-symbols-outlined text-[14px]">timer</span>
+          {toBn(`${pad(h)}:${pad(m)}:${pad(s)}`, state.lang)}
+        </span>
+      </div>
+
+      <div className="no-scrollbar mt-2.5 flex gap-2.5 overflow-x-auto pb-1">
+        {products.map(p => (
+          <ProductCard key={p.id} product={p} variant="flash" />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Custom bazaar request ──────────────────────────────────────
+function CustomRequestCard() {
+  const { state } = useApp();
+  const navigate = useNavigate();
+  const bn = state.lang === 'bn';
+  const [text, setText] = useState('');
+
+  const submit = () => {
+    const q = text.trim();
+    navigate(q ? `/ai?q=${encodeURIComponent(q)}` : '/ai');
+  };
+
+  return (
+    <section className="mx-4 rounded-3xl border border-secondary-bright/40 bg-secondary-soft p-3.5">
+      <div className="flex gap-2.5">
+        <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-secondary-bright/15 text-secondary-bright">
+          <span className="material-symbols-outlined text-[22px]">shopping_basket</span>
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[14px] font-bold leading-snug text-secondary">
+            {bn ? 'যা খুঁজে পাচ্ছেন না, লিখে দিন — বাজার থেকে কিনে এনে দেব' : 'Can’t find it? Type it — we will buy it from the local bazaar'}
+          </h3>
+          <p className="mt-0.5 text-[11px] leading-snug text-secondary/85">
+            Can’t find it? Type anything — we will buy it from local bazaar
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-secondary-bright/55 bg-white p-1">
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder={bn ? 'যেমন: ৫ কেজি মিনিকেট চাল, ১ কেজি দেশি আলু, ২টা' : 'e.g. 5 kg miniket rice, 1 kg potato'}
+          className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/60"
+        />
+        <button
+          onClick={submit}
+          className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-[12px] font-bold text-white active:scale-95"
+        >
+          {bn ? 'পাঠান' : 'Send'}
+          <span className="material-symbols-outlined text-[15px]">send</span>
+        </button>
+      </div>
+
+      <p className="mt-2 flex items-start gap-1.5 text-[10.5px] leading-snug text-secondary/90">
+        <span className="material-symbols-outlined text-[14px]">verified</span>
+        {bn ? 'পণ্যের পাবে কোনো বাড়তি দাম নেওয়া হয় না, শুধু ডেলিভারি চার্জ।' : 'No markup — only the delivery fee.'}
+      </p>
+    </section>
+  );
+}
+
+// ── Home ───────────────────────────────────────────────────────
 export default function HomeScreen() {
   const { state } = useApp();
   const navigate = useNavigate();
-  const [langBannerDismissed] = useState(false);
+  const bn = state.lang === 'bn';
 
-  const popularProducts = state.products.filter(p => p.tags?.includes('popular') && p.isAvailable).slice(0, 8);
-  const openRestaurants = state.restaurants.filter(r => r.isOpen).slice(0, 4);
+  const flashProducts = useMemo(
+    () => state.products.filter(p => p.isFlashSale && p.isAvailable).slice(0, 6),
+    [state.products],
+  );
+  const restaurants = useMemo(
+    () => [...state.restaurants].sort((a, b) => Number(b.isOpen) - Number(a.isOpen)).slice(0, 6),
+    [state.restaurants],
+  );
+
+  // Buy-again comes from the customer's own delivered orders.
+  const buyAgain = useMemo(() => {
+    const ids = new Set<string>();
+    state.orders.forEach(o => o.items.forEach(i => {
+      const match = state.products.find(p => p.nameBn === i.nameBn);
+      if (match) ids.add(match.id);
+    }));
+    const list = state.products.filter(p => ids.has(p.id));
+    return (list.length > 0 ? list : state.products.filter(p => p.isPopular)).slice(0, 6);
+  }, [state.orders, state.products]);
+
+  const activeOrder = state.orders.find(o => ['pending', 'confirmed', 'buying', 'on-the-way'].includes(o.status));
 
   return (
-    <div className="flex-1 flex flex-col bg-surface overflow-y-auto no-scrollbar">
-      <HomeTopBar />
+    <div className="screen-scroll bg-surface">
+      <HomeHeader />
+      <ServiceHoursStrip />
 
-      <div className="flex flex-col gap-4 pb-6">
-        {/* Service banners */}
-        {!state.isServiceOpen && <ServiceBanner type="closed" />}
-        {state.isServiceOpen && state.isSlotFull && <ServiceBanner type="slot_full" />}
-
-        {/* Active order */}
-        <ActiveOrderBanner />
-
-        {/* Promo banner */}
-        {!langBannerDismissed && <PromoBanner />}
-
-        {/* AI assistant entry */}
-        <AiEntryCard />
-
-        {/* Quick actions */}
-        <QuickActions />
-
-        {/* Divider */}
-        <div className="h-px bg-outline-variant/30 mx-4" />
-
-        {/* Popular products */}
-        <div className="flex flex-col gap-3">
-          <SectionHeader
-            titleBn="জনপ্রিয় পণ্য"
-            titleEn="Popular Products"
-            onSeeAll={() => navigate('/bazaar')}
+      <div className="flex flex-col gap-4 pb-40 pt-3">
+        <div className="px-4">
+          <SearchBar
+            readOnly
+            onClick={() => navigate('/search')}
+            placeholder={bn ? 'কী খুঁজছেন? / Search rice, egg, biryani...' : 'Search rice, egg, biryani...'}
           />
-          <div className="grid grid-cols-2 gap-3 px-4">
-            {popularProducts.map(p => (
-              <ProductCard key={p.id} product={p} />
-            ))}
-          </div>
         </div>
 
-        {/* Divider */}
-        <div className="h-px bg-outline-variant/30 mx-4" />
+        {/* Service closed / slot full states */}
+        {(!state.isServiceOpen || state.isSlotFull) && (
+          <div className="mx-4 rounded-2xl border border-secondary-bright/35 bg-secondary-soft p-3">
+            <p className="flex items-center gap-1.5 text-[13px] font-bold text-secondary">
+              <span className="material-symbols-outlined text-[17px]">{state.isServiceOpen ? 'event_busy' : 'schedule'}</span>
+              {state.isServiceOpen
+                ? (bn ? 'আজকের সব স্লট পূর্ণ — কালকের জন্য আগাম অর্ডার করুন' : 'Today’s slots are full — pre-order for tomorrow')
+                : (bn ? 'এখন সার্ভিস বন্ধ • আগামীকাল সকাল ৬:০০ টায় আবার খুলবে' : 'Service closed • opens tomorrow at 6:00 AM')}
+            </p>
+            <button onClick={() => navigate('/bazaar')} className="mt-2 rounded-full bg-primary px-3 py-1.5 text-[11.5px] font-semibold text-white">
+              {bn ? 'আগাম অর্ডার করুন' : 'Pre-order now'}
+            </button>
+          </div>
+        )}
 
-        {/* Restaurants */}
-        <div className="flex flex-col gap-3">
-          <SectionHeader
-            titleBn="রেস্টুরেন্ট"
-            titleEn="Restaurants"
-            onSeeAll={() => navigate('/food')}
+        {/* Live order strip */}
+        {activeOrder && (
+          <button
+            onClick={() => navigate(`/orders/${activeOrder.id}`)}
+            className="mx-4 flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary-tint p-3 text-left"
+          >
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/12 text-primary">
+              <span className="material-symbols-outlined filled-symbol text-[19px]">delivery_dining</span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12.5px] font-bold text-primary-deep">
+                {bn ? 'চলমান অর্ডার' : 'Ongoing order'} · {activeOrder.id.slice(0, 8)}
+              </span>
+              <span className="block truncate text-[10.5px] text-on-surface-variant">
+                {bn ? activeOrder.trackingUpdates.at(-1)?.messageBn : activeOrder.trackingUpdates.at(-1)?.messageEn}
+              </span>
+            </span>
+            <span className="material-symbols-outlined text-[18px] text-primary">chevron_right</span>
+          </button>
+        )}
+
+        <BannerCarousel />
+        <EntryCards />
+        <CategoryRail />
+        <FlashSale products={flashProducts} />
+
+        {/* Restaurants rail */}
+        <section>
+          <SectionHeading
+            titleBn="আশপাশের রেস্টুরেন্ট"
+            titleEn="Top Restaurants Near You"
+            subtitleBn="Top Restaurants Near You in Sadar"
+            subtitleEn="Top Restaurants Near You in Sadar"
+            actionBn="সবগুলো"
+            actionEn="See all"
+            onAction={() => navigate('/food')}
           />
-          <div className="flex flex-col gap-2 px-4">
-            {openRestaurants.map(r => (
+          <div className="no-scrollbar mt-2.5 flex gap-2.5 overflow-x-auto px-4 pb-1">
+            {restaurants.map(r => (
               <RestaurantCard key={r.id} restaurant={r} />
             ))}
           </div>
+        </section>
+
+        <CustomRequestCard />
+
+        {/* Buy again */}
+        <section>
+          <SectionHeading
+            titleBn="আবার অর্ডার করুন"
+            titleEn="Buy Again"
+            subtitleBn="Buy Again From Previous Orders"
+            subtitleEn="Buy Again From Previous Orders"
+            actionBn="হিস্টোরি"
+            actionEn="History"
+            onAction={() => navigate('/orders')}
+          />
+          <div className="no-scrollbar mt-2.5 flex gap-2.5 overflow-x-auto px-4 pb-1">
+            {buyAgain.map(p => (
+              <ProductCard key={p.id} product={p} variant="compact" />
+            ))}
+          </div>
+        </section>
+
+        {/* Trust note */}
+        <div className="mx-4 rounded-2xl bg-primary-tint p-3">
+          <p className="flex items-center gap-1.5 text-[12px] font-bold text-primary-deep">
+            <span className="material-symbols-outlined text-[17px]">verified_user</span>
+            {bn ? 'স্বচ্ছতা ও আসল বাজার দাম' : 'Transparency & real bazaar prices'}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-on-surface-variant">
+            {bn
+              ? 'আমরা পণ্যের দামে কোনো বাড়তি নিই না। রসিদ দেখে আসল বাজার দামেই হিসাব, শুধু ডেলিভারি ফি।'
+              : 'No markup on products. You pay the bazaar receipt price plus the delivery fee only.'}
+          </p>
         </div>
 
-        {/* Earn Money (D21) — repeated at the bottom of Home */}
         <EarnMoneyCard />
+
+        <p className="px-6 pb-2 text-center text-[10px] leading-relaxed text-on-surface-variant/70">
+          {bn ? 'Jovro — লালমনিরহাট সদরের নিজের বাজার সেবা · গোশালা বাজার হাব' : 'Jovro — Lalmonirhat Sadar personal shopper service · Goshala Bazar hub'}
+        </p>
       </div>
     </div>
   );

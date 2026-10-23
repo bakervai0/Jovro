@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { TopAppBar } from '../../components/layout/TopAppBar';
@@ -30,7 +30,9 @@ const nextId = () => ++msgId;
 export default function AiScreen() {
   const { state, dispatch, cartCount } = useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const lang = state.lang;
+  const prefilled = useRef(false);
 
   // Register the live catalogue so AI answers use state.products/areas
   useEffect(() => { setAiCatalogue(state.products, state.areas); }, [state.products, state.areas]);
@@ -55,6 +57,16 @@ export default function AiScreen() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  // A free-text bazaar request from Home / Search arrives as ?q=…
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (!q || prefilled.current) return;
+    prefilled.current = true;
+    const timer = setTimeout(() => { void send(q); }, 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Add parsed lines to the cart, respecting quantities already in it.
   const addLinesToCart = (lines: ParsedLine[]) => {
