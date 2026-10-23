@@ -9,7 +9,11 @@ import { STATUS_META, areaName, cashToCollect, fmtTk } from '../../services/orde
 /** The Rider record belonging to the signed-in demo rider user. */
 export function useCurrentRider(): Rider | undefined {
   const { state } = useApp();
-  return state.riders.find(r => r.userId === state.user?.id) ?? state.riders.find(r => r.id === 'rider-01');
+  // Exact match only — no rider-01 fallback: a signed-in user
+  // must never see (or act on) another rider's record. Screens
+  // handle the undefined case with their empty states, and the
+  // /rider layout gate blocks record-less users before this.
+  return state.riders.find(r => r.userId === state.user?.id);
 }
 
 /** Compact rider-facing order row → rider order detail. */
