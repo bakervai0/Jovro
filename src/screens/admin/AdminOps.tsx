@@ -7,7 +7,14 @@ import {
   fmtDate, fmtTk, fmtTime, inputCls, logAction, toBnDigits, useActorName, useBn,
 } from './adminShared';
 import { areaName, dayKey, latestOrderDay, uid } from '../../services/orderUtils';
-import { REFERRALS_SEED } from '../../data/seed';
+import { PROMO_CODES, REFERRALS_SEED } from '../../data/seed';
+import { PRODUCTS } from '../../data/products';
+import { RESTAURANTS } from '../../data/restaurants';
+import { DELIVERY_AREAS } from '../../data/areas';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import {
+  seedStarterData, fetchAreas, fetchProducts, fetchPromos, fetchRestaurants,
+} from '../../lib/backend';
 
 // H12 — Reviews moderation. Built from design
 // 12._reviews_moderation_jovro: totals header (মোট রিভিউ /
@@ -563,7 +570,51 @@ export function AdminSettings() {
   const [pwNote, setPwNote] = useState(false);
   const [capDraft, setCapDraft] = useState(String(settings.riderCap ?? 5));
   const [cutDraft, setCutDraft] = useState(String(settings.companyCutPerDelivery ?? 10));
+  const [seedState, setSeedState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [seedMsg, setSeedMsg] = useState('');
   const riderIntakeCount = state.riders.filter(r => r.status === 'active' || r.status === 'pending').length;
+
+  // First-run seeding (backend mode only): pushes the starter
+  // catalogue from src/data into EMPTY Supabase tables, then
+  // re-reads them so this screen shows the DB truth. Idempotent
+  // — seedStarterData skips every non-empty table.
+  const runSeed = async () => {
+    setSeedState('running');
+    setSeedMsg('');
+    const res = await seedStarterData({
+      areas: DELIVERY_AREAS, products: PRODUCTS, restaurants: RESTAURANTS,
+      promos: PROMO_CODES, settings: state.adminSettings,
+    });
+    if (!res.data) {
+      setSeedState('error');
+      setSeedMsg(res.error?.message ?? 'Unknown error');
+      return;
+    }
+    const [p, r, pr, a] = await Promise.all([
+      fetchProducts(), fetchRestaurants(), fetchPromos(), fetchAreas(),
+    ]);
+    const partial: {
+      products?: NonNullable<typeof p.data>;
+      restaurants?: NonNullable<typeof r.data>;
+      promos?: NonNullable<typeof pr.data>;
+      areas?: NonNullable<typeof a.data>;
+    } = {};
+    if (p.data) partial.products = p.data;
+    if (r.data) partial.restaurants = r.data;
+    if (pr.data) partial.promos = pr.data;
+    if (a.data) partial.areas = a.data;
+    if (Object.keys(partial).length > 0) {
+      dispatch({ type: 'HYDRATE', state: partial });
+    }
+    const s = res.data;
+    setSeedState('done');
+    setSeedMsg(
+      bn
+        ? `বসানো হয়েছে — এলাকা ${s.areas}টি, পণ্য ${s.products}টি, রেস্টুরেন্ট ${s.restaurants}টি, মেনু আইটেম ${s.menuItems}টি, প্রোমো ${s.promos}টি${s.settings ? ', সেটিংস' : ''}। (আগে থেকে ডেটা থাকা টেবিল বাদ দেওয়া হয়েছে।)`
+        : `Seeded — areas ${s.areas}, products ${s.products}, restaurants ${s.restaurants}, menu items ${s.menuItems}, promos ${s.promos}${s.settings ? ', settings' : ''}. (Tables that already had data were skipped.)`,
+    );
+    logAction(dispatch, actor, 'সিড ডেটা বসিয়েছেন (Supabase starter catalogue)', 'general');
+  };
 
   const saveHours = () => {
     dispatch({ type: 'UPDATE_ADMIN_SETTINGS', settings: { ...settings, serviceHours: hours } });
@@ -835,6 +886,39 @@ export function AdminSettings() {
           <span className="text-label-sm font-normal opacity-80">{bn ? '(অ্যাডমিন প্যানেল থেকে বের হন)' : ''}</span>
         </button>
       </AdminCard>
+
+      {/* Backend starter data — backend mode only (Phase 3).
+          Pushes the built-in catalogue into empty Supabase
+          tables; safe to press again (non-empty tables skip). */}
+      {isSupabaseConfigured && (
+        <AdminCard className="flex flex-col gap-3">
+          <p className="text-label-lg font-bold text-on-surface flex items-center gap-2">
+            <Icon name="database" className="text-primary text-[20px]" />
+            {bn ? 'ব্যাকএন্ড ডেটা' : 'Backend Data'}
+            <span className="block text-label-sm font-normal text-on-surface-variant">Supabase starter catalogue</span>
+          </p>
+          <p className="text-body-sm text-on-surface-variant">
+            {bn
+              ? 'প্রথমবারের সেটআপে এই বাটনটা চাপলেই অ্যাপের তৈরি ক্যাটালগ (পণ্য, রেস্টুরেন্ট, মেনু, প্রোমো, এলাকা) Supabase ডেটাবেসে বসে যাবে। যেই টেবিলে আগে থেকেই ডেটা আছে, সেটা বাদ যাবে — তাই দুবার চাপলেও ক্ষতি নেই।'
+              : 'First-time setup: this button pushes the built-in catalogue (products, restaurants, menus, promos, areas) into Supabase. Tables that already have data are skipped, so pressing it twice is harmless.'}
+          </p>
+          <button
+            onClick={() => { void runSeed(); }}
+            disabled={seedState === 'running'}
+            className="w-full h-11 rounded-xl bg-primary text-white text-label-lg font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <Icon name="upload_file" className="text-[18px]" />
+            {seedState === 'running'
+              ? (bn ? 'বসানো হচ্ছে…' : 'Seeding…')
+              : (bn ? 'সিড ডেটা বসান / Seed starter data' : 'Seed starter data')}
+          </button>
+          {seedMsg && (
+            <p className={clsx('text-body-sm leading-relaxed', seedState === 'error' ? 'text-error' : 'text-on-surface-variant')}>
+              {seedMsg}
+            </p>
+          )}
+        </AdminCard>
+      )}
     </div>
   );
 }
