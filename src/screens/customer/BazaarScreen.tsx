@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { TopAppBar } from '../../components/layout/TopAppBar';
@@ -21,8 +22,13 @@ export default function BazaarScreen() {
   const { state } = useApp();
   const lang = state.lang;
 
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<ProductCategory | 'all'>('all');
+  // Home screen deep-links: ?q= (search bar) and ?category= (category rail)
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
+  const [category, setCategory] = useState<ProductCategory | 'all'>(() => {
+    const c = searchParams.get('category');
+    return c && CATEGORIES.some(x => x.id === c) ? (c as ProductCategory) : 'all';
+  });
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
 
   const filtered = useMemo(() => {

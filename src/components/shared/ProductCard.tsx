@@ -1,6 +1,7 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
+import { PRODUCT_IMAGES } from '../../data/images';
 import type { Product, CartItem, CartItemSource } from '../../types';
 
 interface ProductCardProps {
@@ -51,9 +52,11 @@ export function ProductCard({ product, layout = 'grid' }: ProductCardProps) {
         'flex items-center gap-3 rounded-3xl bg-surface-container-lowest border border-outline-variant/40 p-3',
         !product.isAvailable && 'opacity-60',
       )}>
-        {/* Emoji */}
-        <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center text-[36px] flex-shrink-0">
-          {product.imageEmoji}
+        {/* Photo (emoji fallback while a generated photo is missing) */}
+        <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center text-[36px] flex-shrink-0 overflow-hidden">
+          {PRODUCT_IMAGES[product.id]
+            ? <img src={PRODUCT_IMAGES[product.id]} alt={name} className="w-full h-full object-cover" loading="lazy" />
+            : product.imageEmoji}
         </div>
         {/* Info */}
         <div className="flex-1 min-w-0">
@@ -96,9 +99,11 @@ export function ProductCard({ product, layout = 'grid' }: ProductCardProps) {
         )}>favorite</span>
       </button>
 
-      {/* Image */}
-      <div className="h-28 rounded-2xl bg-surface-container flex items-center justify-center text-[52px]">
-        {product.imageEmoji}
+      {/* Image — generated photo, emoji tile as fallback */}
+      <div className="h-28 rounded-2xl bg-surface-container flex items-center justify-center text-[52px] overflow-hidden">
+        {PRODUCT_IMAGES[product.id]
+          ? <img src={PRODUCT_IMAGES[product.id]} alt={name} className="w-full h-full object-cover" loading="lazy" />
+          : product.imageEmoji}
       </div>
 
       {/* Name */}
