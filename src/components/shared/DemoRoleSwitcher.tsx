@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import type { UserRole } from '../../types';
 
 const ROLES: { role: UserRole; labelBn: string; labelEn: string; icon: string; color: string }[] = [
@@ -16,6 +17,10 @@ export function DemoRoleSwitcher() {
   const [expanded, setExpanded] = useState(false);
   const lang = state.lang;
 
+  // Demo-only control: with a real backend the role comes from
+  // the signed-in profile, so the switcher disappears entirely.
+  if (isSupabaseConfigured) return null;
+
   const current = ROLES.find(r => r.role === state.role) ?? ROLES[0];
 
   const switchRole = (role: UserRole) => {
@@ -28,6 +33,8 @@ export function DemoRoleSwitcher() {
     const routes: Record<UserRole, string> = {
       customer: '/', rider: '/rider', affiliate: '/affiliate', staff: '/staff', admin: '/admin',
     };
+    // Prefix with the app base path: on GitHub Pages the app lives under
+    // /Jovro/, so a bare '/rider' would leave the app and hit a 404.
     const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     window.location.href = base + routes[role];
   };
