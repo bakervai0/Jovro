@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { searchAreasIn } from '../../data/areas';
@@ -33,6 +33,7 @@ function groupIcon(area: DeliveryArea): string {
 export default function AreaPickerScreen() {
   const { state, dispatch } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
   const lang = state.lang;
   const bn = lang === 'bn';
 
@@ -48,7 +49,16 @@ export default function AreaPickerScreen() {
 
   const selectArea = (area: DeliveryArea) => {
     dispatch({ type: 'SET_AREA', areaId: area.id });
-    navigate(-1);
+    // Never strand the user with a bare history-back: honour an
+    // explicit `from` target, else go to the role's home (the
+    // signup / OTP flow lands here with no useful history).
+    const from = (location.state as { from?: string } | null)?.from;
+    const roleHome = state.user?.role === 'admin' ? '/admin'
+      : state.user?.role === 'rider' ? '/rider'
+      : state.user?.role === 'staff' ? '/staff'
+      : state.user?.role === 'affiliate' ? '/affiliate'
+      : '/';
+    navigate(from ?? roleHome, { replace: true });
   };
 
   const rangeLabel = (from: number, to: number) =>

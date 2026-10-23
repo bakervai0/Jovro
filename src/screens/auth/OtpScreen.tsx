@@ -63,10 +63,13 @@ export default function OtpScreen() {
         navigate('/set-password', { state: { phone: fullPhone, otp }, replace: true });
         return;
       }
-      const res = await verifyOtp(fullPhone, otp);
+      const enteredName = name.trim();
+      const res = await verifyOtp(fullPhone, otp, enteredName || undefined);
       if (res.success && res.user) {
         dispatch({ type: 'LOGIN', user: res.user });
-        navigate('/', { replace: true });
+        // First-time users (who typed their name) pick their
+        // delivery area instead of silently defaulting to area-01.
+        navigate(enteredName ? '/area' : '/', { replace: true });
       } else {
         setError(bn ? 'ভুল OTP। আবার চেষ্টা করুন' : 'Wrong OTP. Try again');
         setOtp('');
