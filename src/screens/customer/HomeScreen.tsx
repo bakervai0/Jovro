@@ -5,17 +5,17 @@ import { useApp } from '../../context/AppContext';
 import { HomeTopBar } from '../../components/layout/TopAppBar';
 import { OrderCard } from '../../components/shared/OrderCard';
 import { ProductCard } from '../../components/shared/ProductCard';
-import { PRODUCTS } from '../../data/products';
 import { EarnMoneyCard } from '../../components/shared/EarnMoneyCard';
-import { RESTAURANTS } from '../../data/restaurants';
-import { PROMO_CODES } from '../../data/seed';
 import type { Restaurant } from '../../types';
 
 // ── Promo Banner ────────────────────────────────────────────────
 function PromoBanner() {
   const { state, t } = useApp();
   const lang = state.lang;
-  const promo = PROMO_CODES.find(p => p.isActive);
+  const promo = state.promos.find(p => p.isActive);
+  const banner = state.adminSettings.banners.find(b => b.isActive);
+  if (!promo && !banner) return null;
+  if (!promo && banner) return (<div className="mx-4 rounded-3xl bg-gradient-to-r from-secondary to-secondary/80 p-4 flex items-center gap-3"><span className="text-[34px]">{banner.image}</span><div className="flex-1"><p className="text-label-lg font-bold text-white">{lang === 'bn' ? banner.headlineBn : banner.headlineEn}</p><p className="text-label-sm text-white/80">{lang === 'bn' ? banner.subBn : banner.subEn}</p></div></div>);
   if (!promo) return null;
   return (
     <div className="mx-4 rounded-3xl bg-gradient-to-r from-primary to-primary/80 p-4 flex items-center gap-3">
@@ -63,27 +63,64 @@ function AiEntryCard() {
   );
 }
 
-// ── Service Closed Banner ───────────────────────────────────────
+// ── Service Closed / Slot Full Banner (Stitch g3, part 1) ─────
 function ServiceBanner({ type }: { type: 'closed' | 'slot_full' }) {
   const { state } = useApp();
+  const navigate = useNavigate();
   const lang = state.lang;
+  const bn = lang === 'bn';
   const isClosed = type === 'closed';
   return (
-    <div className={clsx(
-      'mx-4 rounded-3xl p-3.5 flex items-center gap-3',
-      isClosed ? 'bg-error/10 border border-error/20' : 'bg-tertiary/10 border border-tertiary/20',
-    )}>
-      <span className={clsx(
-        'material-symbols-outlined text-[20px]',
-        isClosed ? 'text-error' : 'text-tertiary',
-      )}>
-        {isClosed ? 'store_off' : 'event_busy'}
-      </span>
-      <p className={clsx('text-body-sm font-medium', isClosed ? 'text-error' : 'text-tertiary')}>
-        {isClosed
-          ? (lang === 'bn' ? 'এখন সার্ভিস বন্ধ। আগামীকাল সকাল ৮টায় খুলবে।' : 'Service closed. Opens tomorrow at 8 AM.')
-          : (lang === 'bn' ? 'আজকের স্লট পূর্ণ হয়েছে। কাল আবার চেষ্টা করুন।' : 'Today\'s slots are full. Try again tomorrow.')}
-      </p>
+    <div className="mx-4 bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/30 relative overflow-hidden">
+      <div className={clsx(
+        'absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r',
+        isClosed ? 'from-secondary-container via-[#F97316] to-secondary' : 'from-tertiary-container via-tertiary to-tertiary-container',
+      )} />
+      <div className="flex flex-col items-center text-center mt-1">
+        <div className={clsx(
+          'w-14 h-14 rounded-full border flex items-center justify-center mb-3',
+          isClosed ? 'bg-[#FFF7ED] border-[#F97316]/20 text-secondary' : 'bg-tertiary/10 border-tertiary/20 text-tertiary',
+        )}>
+          <span className="material-symbols-outlined text-3xl">{isClosed ? 'schedule' : 'event_busy'}</span>
+        </div>
+        <h2 className="text-headline-sm font-headline-sm text-on-surface font-bold mb-0.5">
+          {isClosed
+            ? (bn ? 'এখন সার্ভিস বন্ধ আছে' : 'Service is closed right now')
+            : (bn ? 'আজকের সব স্লট পূর্ণ হয়ে গেছে' : 'All of today\u2019s slots are full')}
+        </h2>
+        <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant mb-2">
+          {isClosed ? 'We are closed right now' : 'Today\u2019s slots are full'}
+        </p>
+        <div className="inline-flex items-center gap-1.5 bg-surface-container px-3 py-1.5 rounded-full mb-2.5">
+          <span className="material-symbols-outlined text-primary text-base">alarm_on</span>
+          <p className="text-body-sm font-body-sm text-on-surface font-semibold">
+            {isClosed ? (
+              <>{bn ? 'আবার খুলবে: ' : 'Opens again: '}<span className="text-primary font-bold">{bn ? 'আগামীকাল সকাল ৮:০০ টা' : 'tomorrow at 8:00 AM'}</span></>
+            ) : (
+              <>{bn ? 'কাল সকালের স্লটে আবার চেষ্টা করুন' : 'Try again in tomorrow morning\u2019s slot'}</>
+            )}
+          </p>
+        </div>
+        <p className="text-body-sm font-body-sm text-on-surface-variant bg-surface-container-low px-3.5 py-2 rounded-xl mb-4 leading-relaxed">
+          {isClosed
+            ? (bn
+              ? '"আমাদের রাইডার ও পার্সোনাল শপারগণ এখন বিশ্রামে আছেন। আপনার পছন্দের বাজার বা খাবারের জন্য নির্বিঘ্নে অগ্রিম অর্ডার দিয়ে রাখুন।"'
+              : '"Our riders and personal shoppers are resting now. Feel free to place an advance order for your favourite bazaar items or food."')
+            : (bn
+              ? '"আজকের প্রতিটি স্লটের সব রাইডার বুকড হয়ে গেছেন। কালকের স্লটের জন্য এখনই আগাম অর্ডার দিয়ে রাখতে পারেন।"'
+              : '"Every rider for today\u2019s slots is booked. You can place an advance order for tomorrow\u2019s slot right now."')}
+        </p>
+        <button
+          onClick={() => navigate('/bazaar')}
+          className="w-full h-12 rounded-full bg-primary active:scale-95 duration-150 text-white font-label-lg text-label-lg flex items-center justify-center gap-2 shadow-sm transition-all"
+        >
+          <span className="material-symbols-outlined text-lg">event_note</span>
+          <span>{bn ? 'পরের স্লটের জন্য আগাম অর্ডার করুন' : 'Pre-order for the next slot'}</span>
+        </button>
+        <span className="text-bilingual-sub font-bilingual-sub text-outline mt-1.5">
+          Pre-order for next slot
+        </span>
+      </div>
     </div>
   );
 }
@@ -209,8 +246,8 @@ export default function HomeScreen() {
   const navigate = useNavigate();
   const [langBannerDismissed] = useState(false);
 
-  const popularProducts = PRODUCTS.filter(p => p.tags?.includes('popular') && p.isAvailable).slice(0, 8);
-  const openRestaurants = RESTAURANTS.filter(r => r.isOpen).slice(0, 4);
+  const popularProducts = state.products.filter(p => p.tags?.includes('popular') && p.isAvailable).slice(0, 8);
+  const openRestaurants = state.restaurants.filter(r => r.isOpen).slice(0, 4);
 
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-y-auto no-scrollbar">

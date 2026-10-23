@@ -124,9 +124,10 @@ export const DELIVERY_AREAS: DeliveryArea[] = [
 export const getAreaById = (id: string): DeliveryArea | undefined =>
   DELIVERY_AREAS.find(a => a.id === id);
 
-// Fuzzy search — tolerates wrong spellings
-export const searchAreas = (query: string): DeliveryArea[] => {
-  if (!query.trim()) return DELIVERY_AREAS;
+// Fuzzy search — tolerates wrong spellings (works on any area list,
+ // e.g. the live state.areas so admin fee/served edits flow through)
+export const searchAreasIn = (areas: DeliveryArea[], query: string): DeliveryArea[] => {
+  if (!query.trim()) return areas;
   const q = query.toLowerCase().trim();
 
   // Normalize common misspellings
@@ -138,7 +139,7 @@ export const searchAreas = (query: string): DeliveryArea[] => {
 
   const nq = normalize(q);
 
-  return DELIVERY_AREAS.filter(area => {
+  return areas.filter(area => {
     const bn = area.nameBn.toLowerCase();
     const en = area.nameEn.toLowerCase();
     const enNorm = normalize(en);
@@ -152,6 +153,9 @@ export const searchAreas = (query: string): DeliveryArea[] => {
     );
   });
 };
+
+export const searchAreas = (query: string): DeliveryArea[] =>
+  searchAreasIn(DELIVERY_AREAS, query);
 
 function fuzzyMatch(str: string, pattern: string): boolean {
   let pi = 0;

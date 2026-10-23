@@ -61,8 +61,11 @@ export default function CartScreen() {
     setIsPlacing(false);
 
     if (result.success && result.order) {
-      dispatch({ type: 'PLACE_ORDER', order: result.order });
-      navigate(`/orders/${result.order.id}`, { replace: true });
+      // Keep the real signed-in customer id on the order so admin
+      // quick search / Customer 360° group it under this customer.
+      const order = state.user ? { ...result.order, customerId: state.user.id } : result.order;
+      dispatch({ type: 'PLACE_ORDER', order });
+      navigate(`/orders/${order.id}`, { replace: true });
     }
   };
 
