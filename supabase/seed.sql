@@ -130,6 +130,10 @@ insert into public.admin_settings (id, settings) values (
   '{
     "serviceHours": "সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০",
     "deliverySlots": ["সকাল ৬:০০–দুপুর ১:৩০", "বিকেল ৪:৩০–রাত ১০:৩০"],
+    "riderIntakeOpen": true,
+    "riderCap": 5,
+    "companyCutPerDelivery": 10,
+    "companyFundTotal": 0,
     "passPrice": 1000,
     "passDeliveries": 30,
     "passActive": true,
@@ -150,14 +154,18 @@ on conflict (id) do nothing;
 
 -- ============================================================
 -- ★ MAKE YOURSELF ADMIN — read this, Baker ★
--- 1. First SIGN UP in the app / Supabase Auth with YOUR email
---    (that creates your profile row automatically as 'customer').
--- 2. Change the email below to YOUR email and run ONLY this
+-- 1. First SIGN UP in the app with the admin email below
+--    (bakervai.bdl@gmail.com, name "Baker") — that creates your
+--    profile row automatically as 'customer'.
+-- 2. The UPDATE below is PRE-FILLED with that email: just delete
+--    the leading "--" from its 3 lines and run ONLY that
 --    statement. Done — that account is now the admin.
+-- (profiles.role is the source of truth — the app reads the
+--  role from the profiles table at login.)
 -- ============================================================
 -- update public.profiles
 -- set role = 'admin', is_verified = true
--- where email = 'YOUR-EMAIL-HERE@example.com';
+-- where email = 'bakervai.bdl@gmail.com';
 
 -- ============================================================
 -- TEMPLATES (commented out — products/restaurants change often,
