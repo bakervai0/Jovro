@@ -68,7 +68,7 @@ export function RiderBottomNav() {
     { icon: 'directions_bike', labelKey: 'nav.deliveries', path: '/rider' },
     { icon: 'history', labelKey: 'nav.history', path: '/rider/history' },
     { icon: 'account_balance_wallet', labelKey: 'nav.earnings', path: '/rider/earnings' },
-    { icon: 'notifications', labelKey: 'nav.notifications', path: '/notifications', badgeCount: unreadCount },
+    { icon: 'notifications', labelKey: 'nav.notifications', path: '/rider/notifications', badgeCount: unreadCount },
     { icon: 'person', labelKey: 'nav.profile', path: '/rider/profile' },
   ];
 

@@ -21,8 +21,14 @@ export function DemoRoleSwitcher() {
   const switchRole = (role: UserRole) => {
     dispatch({ type: 'SET_ROLE', role });
     setExpanded(false);
-    // Navigate to home after role switch — done via router in screen
-    window.location.href = '/';
+    // Land on the selected role's own home so its shell opens
+    // (customer '/', rider '/rider', affiliate '/affiliate',
+    // staff '/staff', admin '/admin'). Full-page navigation is
+    // intentional: the persisted demo slices reload consistently.
+    const routes: Record<UserRole, string> = {
+      customer: '/', rider: '/rider', affiliate: '/affiliate', staff: '/staff', admin: '/admin',
+    };
+    window.location.href = routes[role];
   };
 
   return (

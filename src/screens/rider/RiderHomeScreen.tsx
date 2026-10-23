@@ -120,7 +120,7 @@ export default function RiderHomeScreen() {
           </div>
           <button
             aria-label="Notifications"
-            onClick={() => navigate('/notifications')}
+            onClick={() => navigate('/rider/notifications')}
             className="w-11 h-11 flex items-center justify-center rounded-full bg-surface-container text-on-surface relative shrink-0"
           >
             <span className="material-symbols-outlined text-[24px]">notifications</span>

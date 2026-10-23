@@ -15,10 +15,11 @@ const ForgotPasswordScreen = lazy(() => import('./screens/auth/ForgotPasswordScr
 const SetPasswordScreen = lazy(() => import('./screens/auth/SetPasswordScreen'));
 const AreaPickerScreen = lazy(() => import('./screens/auth/AreaPickerScreen'));
 
-// Phase 2+ screens (stubs for now)
+// Phase 2+ screens
 const HomeScreen = lazy(() => import('./screens/customer/HomeScreen'));
 const BazaarScreen = lazy(() => import('./screens/customer/BazaarScreen'));
 const FoodScreen = lazy(() => import('./screens/customer/FoodScreen'));
+const RestaurantMenuScreen = lazy(() => import('./screens/customer/RestaurantMenuScreen'));
 const CartScreen = lazy(() => import('./screens/customer/CartScreen'));
 const ProfileScreen = lazy(() => import('./screens/customer/ProfileScreen'));
 const OrdersScreen = lazy(() => import('./screens/customer/OrdersScreen'));
@@ -142,6 +143,7 @@ function AppRoutes() {
           <Route path="/" element={<HomeScreen />} />
           <Route path="/bazaar" element={<BazaarScreen />} />
           <Route path="/food" element={<FoodScreen />} />
+          <Route path="/food/:id" element={<RestaurantMenuScreen />} />
           <Route path="/cart" element={<CartScreen />} />
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/orders" element={<OrdersScreen />} />
@@ -171,6 +173,7 @@ function AppRoutes() {
           <Route path="orders/:id" element={<RiderOrderDetailScreen />} />
           <Route path="history" element={<RiderHistoryScreen />} />
           <Route path="earnings" element={<RiderEarningsScreen />} />
+          <Route path="notifications" element={<NotificationsScreen />} />
           <Route path="profile" element={<RiderProfileScreen />} />
         </Route>
 

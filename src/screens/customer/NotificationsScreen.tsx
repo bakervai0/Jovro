@@ -29,7 +29,11 @@ export default function NotificationsScreen() {
 
   const handleClick = (notifId: string, orderId?: string) => {
     dispatch({ type: 'MARK_NOTIFICATION_READ', id: notifId });
-    if (orderId) navigate(`/orders/${orderId}`);
+    if (orderId) {
+      // Open the order inside the current role's own section so
+      // the rider never lands in the customer shell.
+      navigate(state.role === 'rider' ? `/rider/orders/${orderId}` : `/orders/${orderId}`);
+    }
   };
 
   const markAllRead = () => dispatch({ type: 'MARK_ALL_READ' });
