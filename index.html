@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="bn">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/Jovro/favicon.svg" />
-    <link rel="manifest" href="/Jovro/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <meta name="theme-color" content="#006A37" />
-    <link rel="apple-touch-icon" href="/Jovro/icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -13,7 +13,11 @@
     <meta name="apple-mobile-web-app-title" content="Jovro" />
     <title>Jovro — লালমনিরহাট পার্সোনাল শপার</title>
     <script>
-      (function(){var p=new URLSearchParams(window.location.search).get('p');if(p)window.history.replaceState(null,'','/Jovro'+decodeURIComponent(p));})();
+      (function(){
+        var base = '%BASE_URL%'.replace(/\/+$/, '');
+        var p = new URLSearchParams(window.location.search).get('p');
+        if (p) window.history.replaceState(null, '', base + decodeURIComponent(p));
+      })();
     </script>
   </head>
   <body>
