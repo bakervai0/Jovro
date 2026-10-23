@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { FullScreenLoader } from './components/layout/PageFrame';
@@ -18,6 +18,7 @@ const AreaPickerScreen = lazy(() => import('./screens/auth/AreaPickerScreen'));
 // Phase 2+ screens
 const HomeScreen = lazy(() => import('./screens/customer/HomeScreen'));
 const BazaarScreen = lazy(() => import('./screens/customer/BazaarScreen'));
+const ProductDetailScreen = lazy(() => import('./screens/customer/ProductDetailScreen'));
 const FoodScreen = lazy(() => import('./screens/customer/FoodScreen'));
 const RestaurantMenuScreen = lazy(() => import('./screens/customer/RestaurantMenuScreen'));
 const CartScreen = lazy(() => import('./screens/customer/CartScreen'));
@@ -142,6 +143,7 @@ function AppRoutes() {
         <Route element={<AuthGuard><CustomerLayout /></AuthGuard>}>
           <Route path="/" element={<HomeScreen />} />
           <Route path="/bazaar" element={<BazaarScreen />} />
+          <Route path="/product/:id" element={<ProductDetailScreen />} />
           <Route path="/food" element={<FoodScreen />} />
           <Route path="/food/:id" element={<RestaurantMenuScreen />} />
           <Route path="/cart" element={<CartScreen />} />
@@ -189,12 +191,56 @@ function AppRoutes() {
   );
 }
 
+// ── Offline banner (Stitch 14 · no-internet state) ────────────
+// Slim global strip shown while the browser reports offline:
+// wifi_off + offline-mode text + the auto-refresh promise and a
+// manual re-check button. Placed orders stay safe (local state).
+function OfflineBanner() {
+  const { state } = useApp();
+  const bn = state.lang === 'bn';
+  const [offline, setOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+
+  useEffect(() => {
+    const update = () => setOffline(!navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+
+  if (!offline) return null;
+  return (
+    <div className="relative z-50 bg-[#7C2D12] text-white px-4 py-2 flex items-center gap-2.5 shadow-md">
+      <span className="material-symbols-outlined text-[20px] shrink-0">wifi_off</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-label-md font-label-md font-bold leading-tight">
+          {bn ? 'ইন্টারনেট বিচ্ছিন্ন • অফলাইন মোড' : 'Offline Mode'}
+          <span className="font-bilingual-sub font-normal opacity-80"> / Offline Mode</span>
+        </p>
+        <p className="text-[11px] opacity-85 leading-tight">
+          {bn ? 'সংযোগ ফিরলে স্বয়ংক্রিয় রিফ্রেশ হবে (Auto-refresh on restore) • ক্যাশ/রাইডার সুরক্ষিত' : 'Auto-refresh on restore • Your placed orders are safe'}
+        </p>
+      </div>
+      <button
+        type="button" onClick={() => setOffline(!navigator.onLine)}
+        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/15 font-label-sm text-label-sm font-bold shrink-0 active:scale-95"
+      >
+        <span className="material-symbols-outlined text-[14px]">sync</span>
+        {bn ? 'যাচাই' : 'Retry'}
+      </button>
+    </div>
+  );
+}
+
 // ── Root ───────────────────────────────────────────────────────
 export default function App() {
   return (
     <AppProvider>
       <BrowserRouter>
         <div className="app-frame">
+          <OfflineBanner />
           <AppRoutes />
         </div>
       </BrowserRouter>
