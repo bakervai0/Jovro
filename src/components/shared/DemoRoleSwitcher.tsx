@@ -28,7 +28,8 @@ export function DemoRoleSwitcher() {
     const routes: Record<UserRole, string> = {
       customer: '/', rider: '/rider', affiliate: '/affiliate', staff: '/staff', admin: '/admin',
     };
-    window.location.href = routes[role];
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    window.location.href = base + routes[role];
   };
 
   return (
