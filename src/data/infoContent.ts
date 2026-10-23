@@ -10,8 +10,8 @@ export const OPERATOR = {
   phoneTel: 'tel:+8801700000000',
   whatsappUrl: 'https://wa.me/8801700000000',
   email: 'support@jovro.com',
-  hoursBn: 'প্রতিদিন সকাল ৮টা – রাত ৯টা (দুই স্লটে)',
-  hoursEn: 'Every day 8 AM – 9 PM (two slots)',
+  hoursBn: 'প্রতিদিন সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০ (দুই শিফটে)',
+  hoursEn: 'Every day 6:00 AM–1:30 PM and 4:30–10:30 PM (two shifts)',
   addressBn: 'গোশালা বাজার, লালমনিরহাট সদর, লালমনিরহাট',
   addressEn: 'Goshala Bazar, Lalmonirhat Sadar, Lalmonirhat',
   facebookUrl: 'https://www.facebook.com/jovro',
@@ -182,7 +182,7 @@ export const FAQ_ITEMS: { qBn: string; qEn: string; aBn: string; aEn: string }[]
   {
     qBn: 'যোগাযোগ করবো কীভাবে?',
     qEn: 'How can I contact you?',
-    aBn: 'প্রোফাইলের "যোগাযোগ" পেজে ফোন, WhatsApp আর ইমেইল আছে। সার্ভিস সময়: প্রতিদিন সকাল ৮টা – রাত ৯টা।',
-    aEn: 'Phone, WhatsApp and email are on the Contact page in Profile. Service hours: every day 8 AM – 9 PM.',
+    aBn: 'প্রোফাইলের "যোগাযোগ" পেজে ফোন, WhatsApp আর ইমেইল আছে। সার্ভিস সময়: প্রতিদিন সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০।',
+    aEn: 'Phone, WhatsApp and email are on the Contact page in Profile. Service hours: every day 6:00 AM–1:30 PM and 4:30–10:30 PM.',
   },
 ];

@@ -131,7 +131,7 @@ export default function DailySummaryScreen() {
               </div>
               <p className="text-bilingual-sub font-bilingual-sub text-on-surface-variant flex items-center gap-1 mt-0.5">
                 <span className="material-symbols-outlined text-[13px] text-primary">schedule</span>
-                <span>{bn ? 'শিফট: সকাল ৮:০০ - রাত ৯:০০ (সেন্ট্রাল ডেস্ক)' : 'Shift: 8:00 AM - 9:00 PM (Central desk)'}</span>
+                <span>{bn ? 'শিফট: সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০ (সেন্ট্রাল ডেস্ক)' : 'Shifts: 6:00 AM–1:30 PM and 4:30–10:30 PM (Central desk)'}</span>
               </p>
             </div>
           </div>

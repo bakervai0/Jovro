@@ -6,7 +6,7 @@ import { TopAppBar } from '../../components/layout/TopAppBar';
 import { Button } from '../../components/ui/Button';
 import { ConfirmSheet } from '../../components/ui/BottomSheet';
 import { cancelOrder } from '../../services/orders';
-import { uid } from '../../services/orderUtils';
+import { uid, SLOT_META } from '../../services/orderUtils';
 import type { OrderStatus } from '../../types';
 
 const STATUS_STEPS: OrderStatus[] = ['pending', 'confirmed', 'buying', 'on-the-way', 'delivered'];
@@ -33,6 +33,7 @@ export default function OrderDetailScreen() {
   const [showCancel, setShowCancel] = useState(false);
   const [rating, setRating] = useState(0);
   const [showProof, setShowProof] = useState(false);
+  const [orderCopied, setOrderCopied] = useState(false);
 
   const order = state.orders.find(o => o.id === id);
 
@@ -52,6 +53,12 @@ export default function OrderDetailScreen() {
   const isActive = ['pending', 'confirmed', 'buying', 'on-the-way'].includes(order.status);
   const canCancel = ['pending', 'confirmed'].includes(order.status);
   const currentStepIdx = STATUS_STEPS.indexOf(order.status as OrderStatus);
+
+  const copyOrderId = async () => {
+    try { await navigator.clipboard.writeText(`#${order.id}`); } catch { /* clipboard unavailable in demo */ }
+    setOrderCopied(true);
+    setTimeout(() => setOrderCopied(false), 2000);
+  };
 
   const handleCancel = () => {
     setCancelling(true);
@@ -80,6 +87,33 @@ export default function OrderDetailScreen() {
       />
 
       <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
+        {/* QS1: prominent tracking Order ID pill with copy, as on
+            the design's live-tracking header. */}
+        <div className="px-4 pt-4">
+          <div className="bg-primary text-on-primary rounded-xl p-3 flex items-center justify-between shadow-sm gap-3">
+            <div className="flex flex-col min-w-0">
+              <span className="text-label-sm font-label-sm text-primary-fixed uppercase tracking-wider font-bold">
+                {bn ? 'ট্র্যাকিং অর্ডার আইডি (Order ID)' : 'Tracking Order ID'}
+              </span>
+              <span className="text-headline-md font-headline-md font-bold tracking-tight text-surface-container-lowest">
+                #{order.id}
+              </span>
+            </div>
+            <button
+              onClick={copyOrderId}
+              className="h-9 px-3 bg-surface-container-lowest text-primary rounded-full font-label-md text-label-md font-bold flex items-center gap-1 shadow active:scale-95 transition-all shrink-0"
+            >
+              <span className="material-symbols-outlined text-[16px]">{orderCopied ? 'done' : 'content_copy'}</span>
+              <span>{orderCopied ? (bn ? 'কপি হয়েছে' : 'Copied') : (bn ? 'কপি করুন' : 'Copy')}</span>
+            </button>
+          </div>
+          <p className="text-center text-bilingual-sub font-bilingual-sub text-on-surface-variant pt-2">
+            {bn
+              ? <>জরুরি সহায়তায় আইডি <span className="font-bold text-primary">#{order.id}</span> উল্লেখ করে জানান</>
+              : <>Mention order ID <span className="font-bold text-primary">#{order.id}</span> when asking for urgent support</>}
+          </p>
+        </div>
+
         {/* Progress stepper (only for non-cancelled) */}
         {isActive && (
           <div className="px-4 py-5">
@@ -408,9 +442,7 @@ export default function OrderDetailScreen() {
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[16px] text-on-surface-variant">schedule</span>
               <p className="text-body-sm text-on-surface">
-                {lang === 'bn'
-                  ? order.timeSlot === 'morning' ? 'সকাল ৮টা–১২টা' : order.timeSlot === 'afternoon' ? 'দুপুর ১২টা–৫টা' : 'সন্ধ্যা ৫টা–৮টা'
-                  : order.timeSlot === 'morning' ? '8AM–12PM' : order.timeSlot === 'afternoon' ? '12PM–5PM' : '5PM–8PM'}
+                {lang === 'bn' ? SLOT_META[order.timeSlot].rangeBn : SLOT_META[order.timeSlot].rangeEn}
               </p>
             </div>
           </div>

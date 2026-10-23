@@ -53,8 +53,22 @@ export default function ProfileScreen() {
   const lang = state.lang;
   const [showLogout, setShowLogout] = useState(false);
   const [langEn, setLangEn] = useState(state.lang === 'en');
+  const [customerCopied, setCustomerCopied] = useState(false);
 
   const user = state.user;
+  // QS1: the visible customer code follows the app-wide convention
+  // (u-001 → CUS-001) already used by admin search / Customer 360°.
+  const customerCode = (() => {
+    if (!user?.id) return '—';
+    const m = user.id.match(/^u-(\d+)$/);
+    return m ? `CUS-${m[1]}` : user.id.toUpperCase();
+  })();
+
+  const copyCustomerId = async () => {
+    try { await navigator.clipboard.writeText(customerCode); } catch { /* clipboard unavailable in demo */ }
+    setCustomerCopied(true);
+    setTimeout(() => setCustomerCopied(false), 2000);
+  };
 
   const toggleLang = () => {
     const newLang = langEn ? 'bn' : 'en';
@@ -88,6 +102,39 @@ export default function ProfileScreen() {
                 <span className="text-label-md text-primary font-semibold">{user.referralCode}</span>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Customer ID — QS1: prominent green ID card with copy +
+            the "read this ID to the operator" guidance. */}
+        <div className="mx-4 mb-4 bg-[#E8F5E9] rounded-2xl p-4 border-2 border-primary/40 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-bilingual-sub font-bilingual-sub uppercase tracking-wider text-primary font-bold">
+                {lang === 'bn' ? 'কাস্টমার আইডি / Customer ID' : 'Customer ID'}
+              </span>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-headline-md font-headline-md font-bold text-primary tracking-wide">{customerCode}</span>
+                <span className="text-label-sm font-label-sm text-primary/80 font-semibold px-2 py-0.5 bg-primary/10 rounded-full">
+                  {lang === 'bn' ? 'সক্রিয় গ্রাহক' : 'Active customer'}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={copyCustomerId}
+              className="h-10 px-3.5 bg-primary text-on-primary rounded-full font-label-md text-label-md flex items-center gap-1.5 shadow-sm active:scale-95 transition-all shrink-0"
+            >
+              <span className="material-symbols-outlined text-[18px]">{customerCopied ? 'done' : 'content_copy'}</span>
+              <span>{customerCopied ? (lang === 'bn' ? 'কপি হয়েছে' : 'Copied') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+            </button>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-primary/20 flex items-start gap-1.5 text-primary">
+            <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">support_agent</span>
+            <p className="text-body-sm font-body-sm font-medium leading-snug">
+              {lang === 'bn'
+                ? <>ফোন কলে অপারেটরকে এই আইডিটি বলুন <span className="text-bilingual-sub font-bilingual-sub text-on-surface-variant">(Read this ID when calling support)</span></>
+                : 'Read this ID to the operator when you call for support.'}
+            </p>
           </div>
         </div>
 

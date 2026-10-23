@@ -67,9 +67,9 @@ export const STATUS_META: Record<OrderStatus, { labelBn: string; labelEn: string
 };
 
 export const SLOT_META: Record<string, { labelBn: string; labelEn: string; rangeBn: string; rangeEn: string }> = {
-  morning: { labelBn: 'সকালের রান', labelEn: 'Morning run', rangeBn: 'সকাল ৮টা–১২টা', rangeEn: '8AM–12PM' },
-  afternoon: { labelBn: 'দুপুরের রান', labelEn: 'Afternoon run', rangeBn: 'দুপুর ১২টা–৫টা', rangeEn: '12PM–5PM' },
-  evening: { labelBn: 'বিকেলের রান', labelEn: 'Evening run', rangeBn: 'বিকেল ৫টা–৮টা', rangeEn: '5PM–8PM' },
+  morning: { labelBn: 'সকালের রান', labelEn: 'Morning run', rangeBn: 'সকাল ৬:০০–দুপুর ১:৩০', rangeEn: '6:00 AM–1:30 PM' },
+  afternoon: { labelBn: 'দুপুরের রান', labelEn: 'Afternoon run', rangeBn: 'দুপুর ১২:০০–১:৩০', rangeEn: '12:00–1:30 PM' },
+  evening: { labelBn: 'বিকেলের রান', labelEn: 'Evening run', rangeBn: 'বিকেল ৪:৩০–রাত ১০:৩০', rangeEn: '4:30–10:30 PM' },
 };
 
 export function areaName(

@@ -39,13 +39,19 @@ export function OrderCard({ order, compact }: OrderCardProps) {
       onClick={() => navigate(`/orders/${order.id}`)}
       className="w-full text-left rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-4 flex flex-col gap-2.5 active:bg-surface-container transition-colors"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={clsx('material-symbols-outlined text-[18px]', isActive ? 'text-primary' : 'text-on-surface-variant')}>
+      {/* Header — QS1: the order number leads the card, large and
+          in the primary colour, not a muted caption. */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={clsx('material-symbols-outlined text-[20px] shrink-0', isActive ? 'text-primary' : 'text-on-surface-variant')}>
             {status.icon}
           </span>
-          <span className="text-label-md font-medium text-on-surface-variant">#{order.id}</span>
+          <span className="flex flex-col min-w-0">
+            <span className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold leading-tight">
+              {lang === 'bn' ? 'অর্ডার নম্বর / Order Number' : 'Order Number'}
+            </span>
+            <span className="text-title-md font-bold text-primary leading-tight">#{order.id}</span>
+          </span>
         </div>
         <Badge variant={status.variant as any} size="sm">
           {lang === 'bn' ? status.labelBn : status.labelEn}
