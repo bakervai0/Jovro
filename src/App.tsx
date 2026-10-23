@@ -48,7 +48,7 @@ const RiderEarningsScreen = lazy(() => import('./screens/rider/RiderEarningsScre
 const RiderProfileScreen = lazy(() => import('./screens/rider/RiderProfileScreen'));
 const RiderPendingScreen = lazy(() => import('./screens/rider/RiderPendingScreen'));
 const RiderApplyScreen = lazy(() => import('./screens/rider/RiderApplyScreen'));
-const AffiliateApplyScreen = lazy(() => import('./screens/affiliate/AffiliateApplyScreen'));
+const AffiliateClosedScreen = lazy(() => import('./screens/affiliate/AffiliateClosedScreen'));
 const AdminScreen = lazy(() => import('./screens/admin/AdminScreen'));
 const AffiliateScreen = lazy(() => import('./screens/affiliate/AffiliateScreen'));
 const StaffScreen = lazy(() => import('./screens/staff/StaffScreen'));
@@ -139,6 +139,17 @@ function AppRoutes() {
         {/* Area picker (accessible always) */}
         <Route path="/area" element={<AreaPickerScreen />} />
 
+        {/* Public info pages — guests must be able to open these
+            from the SignUp / OTP screens (terms, privacy, help). */}
+        <Route element={<CustomerLayout />}>
+          <Route path="/about" element={<AboutScreen />} />
+          <Route path="/contact" element={<ContactScreen />} />
+          <Route path="/faq" element={<FaqScreen />} />
+          <Route path="/privacy" element={<PrivacyScreen />} />
+          <Route path="/terms" element={<TermsScreen />} />
+          <Route path="/refund-policy" element={<RefundPolicyScreen />} />
+        </Route>
+
         {/* Customer */}
         <Route element={<AuthGuard><CustomerLayout /></AuthGuard>}>
           <Route path="/" element={<HomeScreen />} />
@@ -157,16 +168,13 @@ function AppRoutes() {
           <Route path="/report" element={<ReportScreen />} />
           <Route path="/refer" element={<ReferScreen />} />
           <Route path="/subscription" element={<SubscriptionScreen />} />
-          <Route path="/about" element={<AboutScreen />} />
-          <Route path="/contact" element={<ContactScreen />} />
-          <Route path="/faq" element={<FaqScreen />} />
-          <Route path="/privacy" element={<PrivacyScreen />} />
-          <Route path="/terms" element={<TermsScreen />} />
-          <Route path="/refund-policy" element={<RefundPolicyScreen />} />
           <Route path="/delivery-fees" element={<DeliveryFeesScreen />} />
           {/* Phase 5 — applications (F1 / I1) */}
           <Route path="/apply-rider" element={<RiderApplyScreen />} />
-          <Route path="/apply-affiliate" element={<AffiliateApplyScreen />} />
+          {/* Affiliate programme is CLOSED at launch — the apply
+              route shows the closed notice + email waitlist
+              (AffiliateApplyScreen is kept for reopening). */}
+          <Route path="/apply-affiliate" element={<AffiliateClosedScreen />} />
         </Route>
 
         {/* Rider */}
