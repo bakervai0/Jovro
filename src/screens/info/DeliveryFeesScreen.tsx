@@ -55,8 +55,25 @@ export default function DeliveryFeesScreen() {
       subtitle={bn ? 'Delivery Fee Table' : 'ডেলিভারি ফি তালিকা'}
       icon="local_shipping"
     >
+      {/* Trust banner (design 20) */}
+      <div className="bg-primary-container text-on-primary-container rounded-2xl p-4 -mt-2">
+        <div className="flex items-start gap-2.5">
+          <span className="material-symbols-outlined text-primary-fixed text-[22px] shrink-0 mt-0.5">verified_user</span>
+          <div>
+            <p className="text-label-lg font-label-lg font-bold leading-snug">
+              {bn ? 'সব এলাকার ডেলিভারি চার্জ এখানে — কোনো লুকানো খরচ নেই' : 'Every area’s delivery fee is listed here — no hidden charges'}
+            </p>
+            <p className="text-body-sm font-body-sm text-on-primary-container/85 mt-1 leading-relaxed">
+              {bn
+                ? 'বাজার ও দোকানের আসল ক্যাশ মেমোর মূল্যে কেনাকাটা। জোভ্রো শুধুমাত্র সাইকেল ব্যক্তিগত কুরিয়ার সেবার নির্দিষ্ট ডেলিভারি ফি গ্রহণ করে।'
+                : 'Shopping at the original bazaar & shop cash-memo prices. Jovro only takes the fixed bicycle personal-courier delivery fee.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Trust strip (design 20) */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mt-2">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
         {[
           { icon: 'verified_user', bn: 'আসল ভাউচার নিশ্চিত', en: 'Real voucher assured' },
           { icon: 'receipt_long', bn: 'মেমো অনুযায়ী দাম', en: 'Memo-based pricing' },
@@ -133,7 +150,9 @@ export default function DeliveryFeesScreen() {
               key={area.id}
               className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-outline-variant/20' : ''}`}
             >
-              <span className="material-symbols-outlined text-on-surface-variant text-[18px] shrink-0">location_on</span>
+              <span className="text-label-md font-label-md font-bold text-outline w-6 text-center shrink-0">
+                {toBnDigits(String(state.areas.findIndex(x => x.id === area.id) + 1).padStart(2, '0'), state.lang)}
+              </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-body-md font-medium text-on-surface truncate">{bn ? area.nameBn : area.nameEn}</span>
                 <span className="block text-bilingual-sub font-bilingual-sub text-on-surface-variant truncate">
