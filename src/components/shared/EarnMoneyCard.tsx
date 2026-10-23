@@ -1,159 +1,106 @@
-import React, { useState } from 'react';
-import { clsx } from 'clsx';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { BottomSheet } from '../ui/BottomSheet';
-
-type ApplyType = 'rider' | 'affiliate';
-
-const APPLIED_KEY: Record<ApplyType, string> = {
-  rider: 'jovro_applied_rider',
-  affiliate: 'jovro_applied_affiliate',
-};
-
-function readApplied(type: ApplyType): boolean {
-  try { return localStorage.getItem(APPLIED_KEY[type]) === '1'; } catch { return false; }
-}
 
 /**
- * D21 — Earn Money card: "জোভ্রোর সাথে আয় করুন / Earn Money with Jovro".
- * Rider / Affiliate buttons open a simple placeholder application form
- * (name, mobile, email). After applying, the spec's pending-approval
- * state is shown. Used in Profile (above the footer) and at the
- * bottom of Home.
+ * D21 — Earn Money card, composed to Stitch e1.1 / e1.2:
+ * amber opportunity card with two big centred join buttons
+ * (rider = green, affiliate = orange). The buttons navigate to
+ * the real application screens (F1 / I1); the "applied" state is
+ * derived from shared state as before. Used in Profile (above
+ * the footer) and at the bottom of Home.
  */
 export function EarnMoneyCard() {
   const { state } = useApp();
+  const navigate = useNavigate();
   const lang = state.lang;
   const bn = lang === 'bn';
 
-  const [sheetType, setSheetType] = useState<ApplyType | null>(null);
-  const [applied, setApplied] = useState<Record<ApplyType, boolean>>({
-    rider: readApplied('rider'),
-    affiliate: readApplied('affiliate'),
-  });
-  const [justApplied, setJustApplied] = useState(false);
-  const [name, setName] = useState('');
-  const [mobile, setMobile] = useState('');
-  const [email, setEmail] = useState('');
-
-  const openForm = (type: ApplyType) => {
-    setSheetType(type);
-    setJustApplied(false);
-    setName(''); setMobile(''); setEmail('');
+  const myRider = state.riders.find(r => r.userId === state.user?.id);
+  const myAffiliate = state.affiliates.find(a => a.userId === state.user?.id);
+  const applied = {
+    rider: !!myRider,
+    affiliate: !!myAffiliate,
   };
 
-  const submit = () => {
-    if (!sheetType || !name.trim() || !mobile.trim()) return;
-    try { localStorage.setItem(APPLIED_KEY[sheetType], '1'); } catch { /* noop */ }
-    setApplied(prev => ({ ...prev, [sheetType]: true }));
-    setJustApplied(true);
-  };
-
-  const options: { type: ApplyType; icon: string; labelBn: string; labelEn: string; subBn: string; subEn: string }[] = [
-    { type: 'rider', icon: 'directions_bike', labelBn: 'রাইডার হিসেবে যোগ দিন', labelEn: 'Join as a Rider', subBn: 'ডেলিভারি করে আয় করুন', subEn: 'Earn by delivering' },
-    { type: 'affiliate', icon: 'handshake', labelBn: 'অ্যাফিলিয়েট হিসেবে যোগ দিন', labelEn: 'Join as an Affiliate', subBn: 'গ্রাহক এনে কমিশন নিন', subEn: 'Earn commission on referrals' },
+  const options: {
+    key: 'rider' | 'affiliate'; path: string; icon: string;
+    labelBn: string; labelEn: string;
+    microBn: string; microEn: string; microSub: string;
+    btnClass: string;
+  }[] = [
+    {
+      key: 'rider', path: '/apply-rider', icon: 'pedal_bike',
+      labelBn: 'রাইডার হিসেবে যোগ দিন', labelEn: 'Join as a Rider',
+      microBn: 'নিজের সাইকেলে ডেলিভারি করে আয়', microEn: 'Earn by delivering on your own bicycle',
+      microSub: 'Own bicycle delivery',
+      btnClass: 'bg-primary hover:bg-primary-container',
+    },
+    {
+      key: 'affiliate', path: '/apply-affiliate', icon: 'group_add',
+      labelBn: 'অ্যাফিলিয়েট হিসেবে যোগ দিন', labelEn: 'Join as an Affiliate',
+      microBn: 'কাস্টমার আনলেই প্রতি অর্ডারে কমিশন', microEn: 'Commission on every order you bring',
+      microSub: 'Per order commission',
+      btnClass: 'bg-secondary hover:bg-secondary-container',
+    },
   ];
 
   return (
-    <>
-      <div className="mx-4 rounded-3xl bg-gradient-to-r from-secondary-container to-secondary-container/75 p-4">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-white text-[24px]">payments</span>
-          <p className="text-title-md font-bold text-white">
-            {bn ? 'জোভ্রোর সাথে আয় করুন' : 'Earn Money with Jovro'}
-          </p>
-        </div>
-        <p className="text-label-md text-white/85 mt-1">
-          {bn ? 'সময় আছে? ডেলিভারি করুন। পরিচিত আছে? গ্রাহক আনুন।' : 'Have time? Deliver. Know people? Bring customers.'}
-        </p>
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          {options.map(o => (
-            <button
-              key={o.type}
-              onClick={() => openForm(o.type)}
-              className="bg-white rounded-2xl p-3 text-left active:scale-[0.97] transition-transform"
-            >
-              <span className="material-symbols-outlined text-secondary text-[26px]">{o.icon}</span>
-              <p className="text-label-lg font-bold text-on-surface leading-tight mt-1">
-                {bn ? o.labelBn : o.labelEn}
-              </p>
-              <p className="text-label-sm text-on-surface-variant mt-0.5">
-                {applied[o.type]
-                  ? (bn ? '✓ আবেদন করা হয়েছে' : '✓ Applied')
-                  : (bn ? o.subBn : o.subEn)}
-              </p>
-            </button>
-          ))}
-        </div>
+    <section className="mx-4 bg-[#FFFBEB] border-2 border-[#FDE68A] rounded-2xl p-4 shadow-sm relative overflow-hidden">
+      <div className="flex items-center justify-between mb-2">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FEF3C7] text-[#B45309] font-bold text-label-sm border border-[#FCD34D]">
+          <span className="material-symbols-outlined text-[14px]">stars</span>
+          {bn ? 'উপার্জন ও সুযোগ • Opportunities' : 'Opportunities'}
+        </span>
+        <span className="text-label-sm font-label-sm text-[#B45309] bg-white/70 px-2 py-0.5 rounded-full">
+          {bn ? 'সদর এরিয়া' : 'Sadar area'}
+        </span>
       </div>
-
-      {/* Application form / applied state */}
-      <BottomSheet
-        open={sheetType !== null}
-        onClose={() => setSheetType(null)}
-        title={justApplied
-          ? (bn ? 'আবেদন জমা হয়েছে' : 'Application submitted')
-          : sheetType === 'rider'
-            ? (bn ? 'রাইডার আবেদন' : 'Rider Application')
-            : (bn ? 'অ্যাফিলিয়েট আবেদন' : 'Affiliate Application')}
-      >
-        {justApplied ? (
-          <div className="px-5 pb-8 pt-2 flex flex-col items-center gap-3 text-center">
-            <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center">
-              <span className="material-symbols-outlined text-success text-[36px]">check_circle</span>
+      <div className="mb-3.5">
+        <h2 className="text-headline-sm font-headline-sm text-gray-900 leading-snug">
+          {bn ? 'জোভ্রোর সাথে আয় করুন' : 'Earn Money with Jovro'}
+          <span className="block text-body-sm font-bilingual-sub text-gray-600 font-normal">Earn Money with Jovro</span>
+        </h2>
+        <p className="text-body-sm font-body-sm text-gray-700 mt-1 leading-relaxed">
+          {bn ? 'ডেলিভারি করে, অথবা বন্ধুদের এনে — দুইভাবেই আয় করা যায়' : 'Earn by delivering, or by bringing friends'}
+          <span className="block text-[11px] text-gray-500 font-normal">Earn by delivering, or by bringing friends</span>
+        </p>
+      </div>
+      <div className="flex gap-2.5 items-stretch mb-3">
+        {options.map(o => (
+          <button
+            key={o.key}
+            onClick={() => navigate(o.path)}
+            className={`flex-1 ${o.btnClass} text-white p-3.5 rounded-xl shadow-sm text-center flex flex-col items-center justify-between active:scale-95 transition-all`}
+          >
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center mb-2">
+              <span className="material-symbols-outlined text-[24px] text-white">{o.icon}</span>
             </div>
-            <p className="text-body-md text-on-surface leading-relaxed">
-              {bn
-                ? 'আবেদন পেয়েছি — অ্যাডমিন অনুমোদন করলেই আপনার সেকশন চালু হবে'
-                : 'Application received — your section activates when the admin approves'}
-            </p>
-            <Button variant="primary" size="full" onClick={() => setSheetType(null)}>
-              {bn ? 'ঠিক আছে' : 'Got it'}
-            </Button>
-          </div>
-        ) : (
-          <div className="px-5 pb-8 pt-1 flex flex-col gap-3">
-            <Input
-              label={bn ? 'আপনার নাম' : 'Your name'}
-              placeholder={bn ? 'নাম লিখুন' : 'Write your name'}
-              value={name}
-              onChange={e => setName(e.target.value)}
-              icon="person"
-            />
-            <Input
-              label={bn ? 'মোবাইল নম্বর' : 'Mobile number'}
-              placeholder="01XXXXXXXXX"
-              type="tel"
-              value={mobile}
-              onChange={e => setMobile(e.target.value)}
-              icon="call"
-            />
-            <Input
-              label={bn ? 'ইমেইল (ঐচ্ছিক)' : 'Email (optional)'}
-              placeholder="you@example.com"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              icon="mail"
-            />
-            <Button
-              variant="primary"
-              size="full"
-              icon="send"
-              disabled={!name.trim() || !mobile.trim()}
-              onClick={submit}
-              className="mt-1"
-            >
-              {bn ? 'আবেদন পাঠান' : 'Submit Application'}
-            </Button>
-            <p className={clsx('text-label-sm text-on-surface-variant text-center')}>
-              {bn ? 'আবেদনের পর অ্যাডমিন যাচাই করে অনুমোদন দেবেন।' : 'The admin reviews and approves applications.'}
-            </p>
-          </div>
-        )}
-      </BottomSheet>
-    </>
+            <div className="w-full">
+              <span className="font-bold text-label-lg block leading-tight text-white">
+                {bn ? o.labelBn : o.labelEn}
+              </span>
+              <span className="text-bilingual-sub block text-white/90 font-normal leading-tight">
+                {o.labelEn}
+              </span>
+              <div className="mt-2 pt-1.5 border-t border-white/20">
+                <p className="text-[10px] leading-tight text-white/95 font-medium">
+                  {applied[o.key]
+                    ? (bn ? '✓ আবেদন করা হয়েছে' : '✓ Applied')
+                    : (bn ? o.microBn : o.microEn)}
+                </p>
+                <p className="text-[9px] text-white/80 leading-tight">{o.microSub}</p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center justify-center gap-1.5 pt-1 text-center">
+        <span className="material-symbols-outlined text-[14px] text-[#B45309]">verified_user</span>
+        <span className="text-[11px] font-medium text-[#92400E]">
+          {bn ? 'যাচাই ও অনুমোদন সাপেক্ষে সক্রিয় হয় • Subject to admin verification' : 'Activates after verification • যাচাই ও অনুমোদন সাপেক্ষে'}
+        </span>
+      </div>
+    </section>
   );
 }
