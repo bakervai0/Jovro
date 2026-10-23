@@ -2,6 +2,7 @@ import React from 'react';
 import { clsx } from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { PRODUCT_IMAGES } from '../../data/images';
+import { cartLineForPrice, primaryCartLine } from '../../services/orderUtils';
 import type { Product, CartItem, CartItemSource } from '../../types';
 
 interface ProductCardProps {
@@ -13,8 +14,9 @@ export function ProductCard({ product, layout = 'grid' }: ProductCardProps) {
   const { state, dispatch, t } = useApp();
   const lang = state.lang;
 
-  const cartItem = state.cart.find(i => i.productId === product.id);
-  const qty = cartItem?.quantity ?? 0;
+  // Stepper acts on the real cart line (pack / price-split safe).
+  const line = cartLineForPrice(state.cart, product.id, product.approxPrice) ?? primaryCartLine(state.cart, product.id);
+  const qty = line?.quantity ?? 0;
   const isFav = state.favouriteProductIds.includes(product.id);
 
   const name = lang === 'bn' ? product.nameBn : product.nameEn;
@@ -36,9 +38,10 @@ export function ProductCard({ product, layout = 'grid' }: ProductCardProps) {
   };
 
   const updateQty = (delta: number) => {
-    const newQty = qty + delta;
-    if (newQty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: product.id });
-    else dispatch({ type: 'UPDATE_CART_QTY', id: product.id, qty: newQty });
+    if (!line) return;
+    const newQty = line.quantity + delta;
+    if (newQty <= 0) dispatch({ type: 'REMOVE_FROM_CART', id: line.id });
+    else dispatch({ type: 'UPDATE_CART_QTY', id: line.id, qty: newQty });
   };
 
   const toggleFav = (e: React.MouseEvent) => {
