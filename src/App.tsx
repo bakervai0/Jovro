@@ -71,12 +71,16 @@ const StaffScreen = lazy(() => import('./screens/staff/StaffScreen'));
 // ── Guards ─────────────────────────────────────────────────────
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
-  if (!state.isLoggedIn) return <Navigate to="/login" replace />;
+  // Wait for the localStorage session read before deciding — otherwise a
+  // refresh on a deep link would bounce a signed-in user to onboarding.
+  if (!state.hydrated) return <FullScreenLoader />;
+  if (!state.isLoggedIn) return <Navigate to="/splash" replace />;
   return <>{children}</>;
 }
 
 function GuestGuard({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
+  if (!state.hydrated) return <FullScreenLoader />;
   if (state.isLoggedIn) {
     const routes: Record<string, string> = {
       customer: '/', rider: '/rider', affiliate: '/affiliate', staff: '/staff', admin: '/admin',
@@ -225,13 +229,28 @@ export default function App() {
   return (
     <AppProvider>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <div className="app-frame">
-          <OfflineBanner />
-          <ErrorBoundary>
-            <AppRoutes />
-          </ErrorBoundary>
-        </div>
+        <AppFrame />
       </BrowserRouter>
     </AppProvider>
+  );
+}
+
+/** Holds the shell until the persisted session is hydrated. */
+function AppFrame() {
+  const { state } = useApp();
+  if (!state.hydrated) {
+    return (
+      <div className="app-frame">
+        <FullScreenLoader />
+      </div>
+    );
+  }
+  return (
+    <div className="app-frame">
+      <OfflineBanner />
+      <ErrorBoundary>
+        <AppRoutes />
+      </ErrorBoundary>
+    </div>
   );
 }

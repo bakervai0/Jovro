@@ -22,6 +22,8 @@ interface AppState {
   role: UserRole;
   lang: Lang;
   isLoggedIn: boolean;
+  /** true once localStorage has been read — guards must wait for it. */
+  hydrated: boolean;
   isServiceOpen: boolean;
   isSlotFull: boolean;
   // Cart
@@ -117,6 +119,7 @@ function lsSet(key: string, val: unknown) {
 const DATA_KEY = 'jovro_data_v5';
 interface PersistedData {
   orders: Order[];
+  addresses: SavedAddress[];
   riders: Rider[];
   affiliates: Affiliate[];
   staff: StaffMember[];
@@ -130,10 +133,12 @@ interface PersistedData {
   promos: PromoCode[];
   adminSettings: AdminSettings;
   notifications: AppNotification[];
+  isServiceOpen: boolean;
+  isSlotFull: boolean;
 }
 
 const INITIAL: AppState = {
-  user: null, role: 'customer', lang: 'bn', isLoggedIn: false,
+  user: null, role: 'customer', lang: 'bn', isLoggedIn: false, hydrated: false,
   isServiceOpen: true, isSlotFull: false,
   cart: [], orders: SAMPLE_ORDERS,
   notifications: SAMPLE_NOTIFICATIONS,
@@ -158,7 +163,7 @@ const INITIAL: AppState = {
 // ── Reducer ────────────────────────────────────────────────────
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'HYDRATE': return { ...state, ...action.state };
+    case 'HYDRATE': return { ...state, ...action.state, hydrated: true };
     case 'SET_ROLE': {
       const user = DEMO_USERS[action.role];
       return { ...state, role: action.role, user, isLoggedIn: true };
@@ -279,6 +284,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     if (saved) {
       if (saved.orders) hydrated.orders = saved.orders;
+      if (saved.addresses) hydrated.addresses = saved.addresses;
       if (saved.riders) hydrated.riders = saved.riders;
       if (saved.affiliates) hydrated.affiliates = saved.affiliates;
       if (saved.staff) hydrated.staff = saved.staff;
@@ -292,6 +298,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (saved.promos) hydrated.promos = saved.promos;
       if (saved.adminSettings) hydrated.adminSettings = saved.adminSettings;
       if (saved.notifications) hydrated.notifications = saved.notifications;
+      if (typeof saved.isServiceOpen === 'boolean') hydrated.isServiceOpen = saved.isServiceOpen;
+      if (typeof saved.isSlotFull === 'boolean') hydrated.isSlotFull = saved.isSlotFull;
     }
     if (hydrated.isLoggedIn && !hydrated.user && hydrated.role) {
       hydrated.user = DEMO_USERS[hydrated.role as UserRole] ?? DEMO_USERS.customer;
@@ -310,6 +318,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const data: PersistedData = {
       orders: state.orders,
+      addresses: state.addresses,
       riders: state.riders,
       affiliates: state.affiliates,
       staff: state.staff,
@@ -323,11 +332,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       promos: state.promos,
       adminSettings: state.adminSettings,
       notifications: state.notifications,
+      isServiceOpen: state.isServiceOpen,
+      isSlotFull: state.isSlotFull,
     };
     lsSet(DATA_KEY, data);
-  }, [state.orders, state.riders, state.affiliates, state.staff, state.problemReports,
+  }, [state.orders, state.addresses, state.riders, state.affiliates, state.staff, state.problemReports,
       state.reviews, state.paymentRequests, state.products, state.areas, state.activityLog,
-      state.restaurants, state.promos, state.adminSettings, state.notifications]);
+      state.restaurants, state.promos, state.adminSettings, state.notifications,
+      state.isServiceOpen, state.isSlotFull]);
 
   // Computed values
   const currentArea = state.areas.find(a => a.id === state.selectedAreaId);

@@ -75,8 +75,9 @@ export default function OtpScreen() {
               {lang === 'bn' ? `${phone} নম্বরে` : `To ${phone}`}
             </p>
           )}
-          <p className="text-label-md text-primary font-medium mt-2">
-            {lang === 'bn' ? 'ডেমো OTP: 1234' : 'Demo OTP: 1234'}
+          <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary-soft px-3 py-1 text-[11.5px] font-semibold text-primary-deep">
+            <span className="material-symbols-outlined text-[14px]">info</span>
+            {lang === 'bn' ? '(ডেমো কোড / Demo code: 1234)' : '(Demo code: 1234)'}
           </p>
         </div>
 

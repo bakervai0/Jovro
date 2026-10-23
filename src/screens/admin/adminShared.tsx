@@ -91,10 +91,12 @@ export function Avatar({ name, className }: { name: string; className?: string }
 }
 
 export function ToggleRow({
-  titleBn, titleEn, subBn, subEn, checked, onChange, danger,
+  titleBn, titleEn, subBn, subEn, checked, onChange, danger, label,
 }: {
   titleBn: string; titleEn: string; subBn?: string; subEn?: string;
   checked: boolean; onChange: (v: boolean) => void; danger?: boolean;
+  /** Accessible name when the visual title lives outside this row. */
+  label?: string;
 }) {
   const bn = useBn();
   return (
@@ -104,8 +106,10 @@ export function ToggleRow({
         {(subBn || subEn) && <p className="text-label-sm text-on-surface-variant mt-0.5">{bn ? subBn : subEn}</p>}
       </div>
       <button
+        type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label ?? ((bn ? titleBn : titleEn) || 'switch')}
         onClick={() => onChange(!checked)}
         className={clsx(
           'relative w-12 h-7 rounded-full transition-colors flex-shrink-0',

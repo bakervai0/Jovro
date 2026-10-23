@@ -592,6 +592,7 @@ export function AdminSettings() {
           </div>
           <ToggleRow
             titleBn="" titleEn="" danger={!state.isServiceOpen}
+            label={bn ? 'মাস্টার সার্ভিস সুইচ' : 'Master Service Switch'}
             checked={state.isServiceOpen}
             onChange={() => { dispatch({ type: 'TOGGLE_SERVICE' }); logAction(dispatch, actor, `মাস্টার সার্ভিস সুইচ ${state.isServiceOpen ? 'বন্ধ' : 'চালু'} করেছেন`, 'general'); }}
           />
@@ -609,6 +610,7 @@ export function AdminSettings() {
           <ToggleRow
             titleBn="আজকের স্লট ফুল" titleEn="Today's slots full"
             subBn="চালু থাকলে কাস্টমার অ্যাপে স্লট-ফুল অবস্থা দেখাবে" subEn="Shows the slot-full state in the customer app"
+            label={bn ? 'আজকের স্লট ফুল' : "Today's slots full"}
             checked={state.isSlotFull}
             onChange={() => dispatch({ type: 'TOGGLE_SLOT' })}
           />
