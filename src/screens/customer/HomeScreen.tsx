@@ -6,6 +6,7 @@ import { HomeTopBar } from '../../components/layout/TopAppBar';
 import { OrderCard } from '../../components/shared/OrderCard';
 import { ProductCard } from '../../components/shared/ProductCard';
 import { PRODUCTS } from '../../data/products';
+import { EarnMoneyCard } from '../../components/shared/EarnMoneyCard';
 import { RESTAURANTS } from '../../data/restaurants';
 import { PROMO_CODES } from '../../data/seed';
 import type { Restaurant } from '../../types';
@@ -31,6 +32,34 @@ function PromoBanner() {
       </div>
       <span className="material-symbols-outlined text-white/80 text-[18px]">chevron_right</span>
     </div>
+  );
+}
+
+// ── AI Assistant entry card ─────────────────────────────────────
+function AiEntryCard() {
+  const { state } = useApp();
+  const navigate = useNavigate();
+  const lang = state.lang;
+  return (
+    <button
+      onClick={() => navigate('/ai')}
+      className="mx-4 rounded-3xl bg-gradient-to-r from-tertiary to-tertiary/80 p-4 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
+    >
+      <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+        <span className="material-symbols-outlined text-white text-[24px]">smart_toy</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-label-lg font-bold text-white">
+          {lang === 'bn' ? 'সহায়ককে লিখে দিন' : 'Ask the Assistant'}
+        </p>
+        <p className="text-label-sm text-white/85 mt-0.5">
+          {lang === 'bn'
+            ? '"৫ কেজি চাল আর ১ লিটার তেল দাও" — লিখলেই কার্টে যোগ হবে'
+            : '"5 kg rice and 1 litre oil" — it goes straight to your cart'}
+        </p>
+      </div>
+      <span className="material-symbols-outlined text-white/80 text-[18px]">chevron_right</span>
+    </button>
   );
 }
 
@@ -198,6 +227,9 @@ export default function HomeScreen() {
         {/* Promo banner */}
         {!langBannerDismissed && <PromoBanner />}
 
+        {/* AI assistant entry */}
+        <AiEntryCard />
+
         {/* Quick actions */}
         <QuickActions />
 
@@ -234,6 +266,9 @@ export default function HomeScreen() {
             ))}
           </div>
         </div>
+
+        {/* Earn Money (D21) — repeated at the bottom of Home */}
+        <EarnMoneyCard />
       </div>
     </div>
   );

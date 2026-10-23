@@ -23,7 +23,7 @@ export default function CartScreen() {
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
   const [note, setNote] = useState('');
-  const [timeSlot, setTimeSlot] = useState<TimeSlot>('morning');
+  const [timeSlot, setTimeSlot] = useState<TimeSlot>(state.isSlotFull ? 'afternoon' : 'morning');
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bkash' | 'nagad'>('cod');
   const [isPlacing, setIsPlacing] = useState(false);
   const [showClearSheet, setShowClearSheet] = useState(false);
@@ -185,27 +185,46 @@ export default function CartScreen() {
             {lang === 'bn' ? 'ডেলিভারির সময়' : 'Delivery slot'}
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {TIME_SLOTS.map(slot => (
+            {TIME_SLOTS.map(slot => {
+              // D12: when slots are full, the morning slot is marked full
+              const isFull = state.isSlotFull && slot.id === 'morning';
+              return (
               <button
                 key={slot.id}
+                disabled={isFull}
                 onClick={() => setTimeSlot(slot.id)}
                 className={clsx(
                   'flex flex-col items-center gap-1 p-3 rounded-2xl border transition-all',
-                  timeSlot === slot.id
-                    ? 'bg-primary/10 border-primary'
-                    : 'bg-surface-container border-outline-variant',
+                  isFull
+                    ? 'bg-surface-container border-outline-variant opacity-50 cursor-not-allowed'
+                    : timeSlot === slot.id
+                      ? 'bg-primary/10 border-primary'
+                      : 'bg-surface-container border-outline-variant',
                 )}
               >
                 <span className="text-[24px]">{slot.icon}</span>
-                <span className={clsx('text-label-md font-medium', timeSlot === slot.id ? 'text-primary' : 'text-on-surface')}>
+                <span className={clsx('text-label-md font-medium', !isFull && timeSlot === slot.id ? 'text-primary' : 'text-on-surface')}>
                   {lang === 'bn' ? slot.labelBn : slot.labelEn}
                 </span>
-                <span className="text-[10px] text-on-surface-variant">
-                  {lang === 'bn' ? slot.rangeBn : slot.rangeEn}
-                </span>
+                {isFull ? (
+                  <span className="text-[10px] font-bold text-error">
+                    {lang === 'bn' ? 'ভরে গেছে / Full' : 'Full'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-on-surface-variant">
+                    {lang === 'bn' ? slot.rangeBn : slot.rangeEn}
+                  </span>
+                )}
               </button>
-            ))}
+              );
+            })}
           </div>
+          {state.isSlotFull && (
+            <p className="text-label-md text-error flex items-center gap-1 mt-2">
+              <span className="material-symbols-outlined text-[15px]">event_busy</span>
+              {lang === 'bn' ? 'অন্য স্লট বেছে নিন' : 'Please choose another slot'}
+            </p>
+          )}
         </div>
 
         {/* Payment method */}

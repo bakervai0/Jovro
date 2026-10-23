@@ -25,6 +25,20 @@ const OrdersScreen = lazy(() => import('./screens/customer/OrdersScreen'));
 const OrderDetailScreen = lazy(() => import('./screens/customer/OrderDetailScreen'));
 const NotificationsScreen = lazy(() => import('./screens/customer/NotificationsScreen'));
 
+// Phase 4 screens (AI, growth, info)
+const AiScreen = lazy(() => import('./screens/customer/AiScreen'));
+const AiBusyScreen = lazy(() => import('./screens/customer/AiBusyScreen'));
+const ReportScreen = lazy(() => import('./screens/customer/ReportScreen'));
+const ReferScreen = lazy(() => import('./screens/customer/ReferScreen'));
+const SubscriptionScreen = lazy(() => import('./screens/customer/SubscriptionScreen'));
+const AboutScreen = lazy(() => import('./screens/info/AboutScreen'));
+const ContactScreen = lazy(() => import('./screens/info/ContactScreen'));
+const FaqScreen = lazy(() => import('./screens/info/FaqScreen'));
+const PrivacyScreen = lazy(() => import('./screens/info/PrivacyScreen'));
+const TermsScreen = lazy(() => import('./screens/info/TermsScreen'));
+const RefundPolicyScreen = lazy(() => import('./screens/info/RefundPolicyScreen'));
+const DeliveryFeesScreen = lazy(() => import('./screens/info/DeliveryFeesScreen'));
+
 const RiderHomeScreen = lazy(() => import('./screens/rider/RiderHomeScreen'));
 const AdminScreen = lazy(() => import('./screens/admin/AdminScreen'));
 const AffiliateScreen = lazy(() => import('./screens/affiliate/AffiliateScreen'));
@@ -113,6 +127,19 @@ function AppRoutes() {
           <Route path="/orders" element={<OrdersScreen />} />
           <Route path="/orders/:id" element={<OrderDetailScreen />} />
           <Route path="/notifications" element={<NotificationsScreen />} />
+          {/* Phase 4 */}
+          <Route path="/ai" element={<AiScreen />} />
+          <Route path="/ai/busy" element={<AiBusyScreen />} />
+          <Route path="/report" element={<ReportScreen />} />
+          <Route path="/refer" element={<ReferScreen />} />
+          <Route path="/subscription" element={<SubscriptionScreen />} />
+          <Route path="/about" element={<AboutScreen />} />
+          <Route path="/contact" element={<ContactScreen />} />
+          <Route path="/faq" element={<FaqScreen />} />
+          <Route path="/privacy" element={<PrivacyScreen />} />
+          <Route path="/terms" element={<TermsScreen />} />
+          <Route path="/refund-policy" element={<RefundPolicyScreen />} />
+          <Route path="/delivery-fees" element={<DeliveryFeesScreen />} />
         </Route>
 
         {/* Rider */}

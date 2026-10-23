@@ -7,6 +7,8 @@ import { Button } from '../../components/ui/Button';
 import { Toggle } from '../../components/ui/Toggle';
 import { ConfirmSheet } from '../../components/ui/BottomSheet';
 import { DemoRoleSwitcher } from '../../components/shared/DemoRoleSwitcher';
+import { EarnMoneyCard } from '../../components/shared/EarnMoneyCard';
+import { FooterBlock } from '../../components/shared/FooterBlock';
 
 function MenuItem({ icon, labelBn, labelEn, onClick, danger, badge }: {
   icon: string; labelBn: string; labelEn: string;
@@ -128,11 +130,19 @@ export default function ProfileScreen() {
         {/* Support */}
         <div className="mt-3">
           <MenuSection>
-            <MenuItem icon="help_outline" labelBn="সাহায্য ও সহায়তা" labelEn="Help & Support" />
+            <MenuItem icon="smart_toy" labelBn="সহায়ক (AI)" labelEn="Assistant (AI)" onClick={() => navigate('/ai')} />
             <Divider />
-            <MenuItem icon="privacy_tip" labelBn="গোপনীয়তা নীতি" labelEn="Privacy Policy" />
+            <MenuItem icon="report" labelBn="সমস্যা জানান" labelEn="Report a Problem" onClick={() => navigate('/report')} />
             <Divider />
-            <MenuItem icon="info_outline" labelBn="অ্যাপ সম্পর্কে" labelEn="About App" badge="v1.0" />
+            <MenuItem icon="group_add" labelBn="রেফার করে আয় করুন" labelEn="Refer & Earn" onClick={() => navigate('/refer')} />
+            <Divider />
+            <MenuItem icon="card_membership" labelBn="আমার সাবস্ক্রিপশন" labelEn="My Subscription" onClick={() => navigate('/subscription')} />
+            <Divider />
+            <MenuItem icon="help_outline" labelBn="সাহায্য ও সহায়তা" labelEn="Help & Support" onClick={() => navigate('/faq')} />
+            <Divider />
+            <MenuItem icon="privacy_tip" labelBn="গোপনীয়তা নীতি" labelEn="Privacy Policy" onClick={() => navigate('/privacy')} />
+            <Divider />
+            <MenuItem icon="info_outline" labelBn="অ্যাপ সম্পর্কে" labelEn="About App" badge="v1.0" onClick={() => navigate('/about')} />
           </MenuSection>
         </div>
 
@@ -149,10 +159,18 @@ export default function ProfileScreen() {
           </Button>
         </div>
 
+        {/* Earn Money (D21) — above the footer */}
+        <div className="mt-4">
+          <EarnMoneyCard />
+        </div>
+
         {/* Demo role switcher */}
         <div className="mt-4 px-4">
           <DemoRoleSwitcher />
         </div>
+
+        {/* Footer block (D13) — very bottom */}
+        <FooterBlock />
       </div>
 
       <ConfirmSheet
