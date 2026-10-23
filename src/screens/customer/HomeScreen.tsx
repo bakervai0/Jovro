@@ -135,11 +135,10 @@ function QuickActions() {
     { icon: 'storefront', labelBn: 'বাজার', labelEn: 'Bazaar', path: '/bazaar', color: 'bg-primary/10 text-primary' },
     { icon: 'restaurant', labelBn: 'খাবার', labelEn: 'Food', path: '/food', color: 'bg-secondary/10 text-secondary' },
     { icon: 'smart_toy', labelBn: 'AI সহকারী', labelEn: 'AI Help', path: '/ai', color: 'bg-tertiary/10 text-tertiary' },
-    { icon: 'loyalty', labelBn: 'অফার', labelEn: 'Offers', path: '/offers', color: 'bg-success/10 text-success' },
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-2 px-4">
+    <div className="grid grid-cols-3 gap-2 px-4">
       {actions.map(a => (
         <button
           key={a.path}

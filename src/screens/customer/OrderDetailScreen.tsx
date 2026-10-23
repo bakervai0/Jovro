@@ -6,10 +6,21 @@ import { TopAppBar } from '../../components/layout/TopAppBar';
 import { Button } from '../../components/ui/Button';
 import { ConfirmSheet } from '../../components/ui/BottomSheet';
 import { cancelOrder } from '../../services/orders';
-import { uid, SLOT_META } from '../../services/orderUtils';
+import { uid, SLOT_META, toBnDigits } from '../../services/orderUtils';
 import type { OrderStatus } from '../../types';
 
-const STATUS_STEPS: OrderStatus[] = ['pending', 'confirmed', 'buying', 'on-the-way', 'delivered'];
+// G4 journey steps (design g4._delivery_proof_confirmation):
+// Received -> Buying -> Packed -> On the way -> Delivered.
+// The app has no separate 'packed' status — packed is complete
+// once the order is on the way, and its time is the on-the-way
+// tracking update's time.
+const JOURNEY_STEPS: { key: string; labelBn: string; labelEn: string; icon: string }[] = [
+  { key: 'accepted', labelBn: 'অর্ডার গৃহীত', labelEn: 'Order received', icon: 'receipt' },
+  { key: 'buying', labelBn: 'বাজার ক্রয়', labelEn: 'Bazaar buying', icon: 'shopping_basket' },
+  { key: 'packed', labelBn: 'প্যাকড', labelEn: 'Packed', icon: 'package_2' },
+  { key: 'on-the-way', labelBn: 'অন দ্য ওয়ে', labelEn: 'On the way', icon: 'directions_bike' },
+  { key: 'delivered', labelBn: 'ডেলিভার্ড', labelEn: 'Delivered', icon: 'done_all' },
+];
 
 const STATUS_LABEL: Record<OrderStatus, { bn: string; en: string; icon: string }> = {
   pending: { bn: 'অপেক্ষায়', en: 'Pending', icon: 'receipt' },
@@ -50,9 +61,28 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const isActive = ['pending', 'confirmed', 'buying', 'on-the-way'].includes(order.status);
   const canCancel = ['pending', 'confirmed'].includes(order.status);
-  const currentStepIdx = STATUS_STEPS.indexOf(order.status as OrderStatus);
+
+  // G4 journey card derivation — existing status + tracking only.
+  const journeyVisible = ['pending', 'confirmed', 'buying', 'on-the-way', 'delivered'].includes(order.status);
+  const journeyCompleted = order.status === 'delivered' ? 5 : order.status === 'on-the-way' ? 3 : 1;
+  const journeyCurrent = order.status === 'delivered' || order.status === 'pending'
+    ? -1
+    : order.status === 'on-the-way' ? 3 : 1;
+  const updateTimeFor = (status: OrderStatus) => order.trackingUpdates.find(u => u.status === status)?.timestamp;
+  const packedTime = order.trackingUpdates.find(
+    u => u.status === 'on-the-way' || /প্যাক|packed/i.test(`${u.messageBn} ${u.messageEn}`),
+  )?.timestamp;
+  const journeyTimes: (string | undefined)[] = [
+    order.createdAt,
+    updateTimeFor('buying'),
+    packedTime,
+    updateTimeFor('on-the-way'),
+    updateTimeFor('delivered') ?? (order.status === 'delivered' ? order.updatedAt : undefined),
+  ];
+  const fmtJourneyTime = (iso?: string) => (iso
+    ? new Date(iso).toLocaleTimeString(bn ? 'bn-BD' : 'en-BD', { hour: 'numeric', minute: '2-digit' })
+    : '');
 
   const copyOrderId = async () => {
     try { await navigator.clipboard.writeText(`#${order.id}`); } catch { /* clipboard unavailable in demo */ }
@@ -114,50 +144,66 @@ export default function OrderDetailScreen() {
           </p>
         </div>
 
-        {/* Progress stepper (only for non-cancelled) */}
-        {isActive && (
-          <div className="px-4 py-5">
-            <div className="flex items-start gap-0">
-              {STATUS_STEPS.map((step, idx) => {
-                const done = idx < currentStepIdx;
-                const current = idx === currentStepIdx;
-                const future = idx > currentStepIdx;
-                const label = STATUS_LABEL[step];
-                return (
-                  <div key={step} className="flex-1 flex flex-col items-center">
-                    {/* Dot + line */}
-                    <div className="flex items-center w-full">
-                      {idx > 0 && (
-                        <div className={clsx('flex-1 h-0.5', done || current ? 'bg-primary' : 'bg-outline-variant')} />
-                      )}
-                      <div className={clsx(
-                        'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all',
-                        done ? 'bg-primary border-primary' :
-                        current ? 'bg-white border-primary' :
-                        'bg-surface border-outline-variant',
-                      )}>
-                        {done ? (
-                          <span className="material-symbols-outlined text-white text-[14px]">check</span>
-                        ) : current ? (
-                          <div className="w-3 h-3 rounded-full bg-primary" />
-                        ) : null}
+        {/* G4: order-status journey card (design g4) — replaces the
+            old stepper; also shown once delivered, above the
+            delivery-proof hero, exactly as in the design. */}
+        {journeyVisible && (
+          <div className="px-4 pt-4">
+            <div className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant/30 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-label-md font-label-md font-bold text-on-surface">
+                  {bn ? 'অর্ডার স্ট্যাটাস জার্নি' : 'Order Status Journey'}
+                </span>
+                <span className="text-label-sm font-label-sm text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
+                  {bn
+                    ? `${toBnDigits(journeyCompleted, lang)}/${toBnDigits(5, lang)} ধাপ সম্পন্ন`
+                    : `${journeyCompleted}/5 steps done`}
+                </span>
+              </div>
+              <div className="relative py-2">
+                <div className="absolute top-[22px] left-3 right-3 h-[3px] bg-outline-variant/50 rounded-full z-0" />
+                <div
+                  className="absolute top-[22px] left-3 h-[3px] bg-primary rounded-full z-0"
+                  style={{ width: `calc((100% - 24px) * ${(journeyCompleted - 1) / 4})` }}
+                />
+                <div className="relative z-10 flex justify-between items-start">
+                  {JOURNEY_STEPS.map((step, idx) => {
+                    const done = idx < journeyCompleted;
+                    const current = idx === journeyCurrent;
+                    const isFinal = idx === JOURNEY_STEPS.length - 1;
+                    return (
+                      <div key={step.key} className="flex flex-col items-center w-12 text-center">
+                        <div className={clsx(
+                          'w-7 h-7 rounded-full flex items-center justify-center shadow-sm',
+                          done
+                            ? 'bg-primary text-on-primary'
+                            : current
+                              ? 'bg-white border-2 border-primary'
+                              : 'bg-surface-container border border-outline-variant text-on-surface-variant',
+                          done && isFinal && 'ring-4 ring-primary/20',
+                        )}>
+                          {done ? (
+                            <span className="material-symbols-outlined text-sm font-bold">{isFinal ? 'done_all' : 'check'}</span>
+                          ) : current ? (
+                            <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                          ) : (
+                            <span className="material-symbols-outlined text-[14px]">{step.icon}</span>
+                          )}
+                        </div>
+                        <span className={clsx(
+                          'text-label-sm font-label-sm mt-1.5 leading-tight',
+                          done || current ? 'text-primary font-bold' : 'text-on-surface font-semibold',
+                        )}>
+                          {bn ? step.labelBn : step.labelEn}
+                        </span>
+                        <span className={clsx('text-[9px] font-medium', done ? 'text-primary' : 'text-on-surface-variant')}>
+                          {fmtJourneyTime(journeyTimes[idx])}
+                        </span>
                       </div>
-                      {idx < STATUS_STEPS.length - 1 && (
-                        <div className={clsx('flex-1 h-0.5', done ? 'bg-primary' : 'bg-outline-variant')} />
-                      )}
-                    </div>
-                    {/* Label */}
-                    <p className={clsx(
-                      'text-[10px] mt-1.5 text-center leading-tight',
-                      current ? 'text-primary font-semibold' :
-                      done ? 'text-primary/70' :
-                      'text-on-surface-variant',
-                    )}>
-                      {lang === 'bn' ? label.bn : label.en}
-                    </p>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         )}
