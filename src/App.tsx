@@ -47,6 +47,7 @@ const RiderHistoryScreen = lazy(() => import('./screens/rider/RiderHistoryScreen
 const RiderEarningsScreen = lazy(() => import('./screens/rider/RiderEarningsScreen'));
 const RiderProfileScreen = lazy(() => import('./screens/rider/RiderProfileScreen'));
 const RiderPendingScreen = lazy(() => import('./screens/rider/RiderPendingScreen'));
+const RiderBlockedScreen = lazy(() => import('./screens/rider/RiderPendingScreen').then(m => ({ default: m.RiderBlockedScreen })));
 const RiderApplyScreen = lazy(() => import('./screens/rider/RiderApplyScreen'));
 const AffiliateClosedScreen = lazy(() => import('./screens/affiliate/AffiliateClosedScreen'));
 const AdminScreen = lazy(() => import('./screens/admin/AdminScreen'));
@@ -88,11 +89,21 @@ function RiderLayout() {
   // approval notice instead of the dashboard. The rider record
   // is matched by the signed-in user's id (seeded demo rider
   // rider-01 stays active, so the dashboard stays demoable).
+  // Only an ACTIVE record reaches the dashboard: rejected /
+  // inactive / suspended riders — and rider-role users with no
+  // record at all — get the blocked notice, never the portal.
   const myRider = state.riders.find(r => r.userId === state.user?.id);
   if (myRider?.status === 'pending') {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         <RiderPendingScreen />
+      </div>
+    );
+  }
+  if (!myRider || myRider.status !== 'active') {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <RiderBlockedScreen status={myRider?.status} />
       </div>
     );
   }
