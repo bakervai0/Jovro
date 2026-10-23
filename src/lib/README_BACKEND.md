@@ -1,5 +1,19 @@
 # Jovro backend — Phase 2: integration layer
 
+> **Phase 3 status (done):** the wiring described below is now
+> live in the app. AppContext hydrates from `backend.ts` and
+> writes every mutation through to it whenever Supabase is
+> configured (optimistic local update; failures logged + flagged,
+> never rolled back); the auth screens use `auth.ts`
+> (email + password, role from the profile decides the landing
+> route via `routeForRole`); the demo role switcher and the demo
+> OTP path only exist in unconfigured mode. Extra Phase-3 pieces:
+> `supabase/schema_phase3.sql` (affiliate_waitlist, riders
+> .duty_on, orders.rider_earning, realtime publication),
+> `seedStarterData()` + the admin "সিড ডেটা বসান" action, and
+> realtime merge of orders/notifications. Setup for a real
+> project: `supabase/SETUP.md` (ধাপ ৬–১০).
+
 Phase 1 (done): `supabase/schema.sql` (19 tables + RLS), `supabase/seed.sql`,
 `src/lib/supabase.ts` client, `@supabase/supabase-js` installed.
 

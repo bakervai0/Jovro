@@ -1,18 +1,29 @@
 // ============================================================
-// Jovro — typed data-access layer over Supabase (backend Phase 2)
+// Jovro — typed data-access layer over Supabase (backend Phase 2,
+// wired into the app in Phase 3)
 //
 // One function set per aggregate, mirroring the AppContext
 // action vocabulary (ADD_PRODUCT → addProduct, PLACE_ORDER →
-// placeOrder, UPDATE_AREA → updateArea, …). These functions are
-// the contract Phase 3 will call when AppContext is rewired
-// from localStorage demo state to the real backend.
+// placeOrder, UPDATE_AREA → updateArea, …). Since Phase 3,
+// AppContext calls these for write-through sync + hydration
+// whenever `isSupabaseConfigured` is true; demo mode (no keys)
+// never touches this file.
 //
-// NOT CALLED BY THE APP YET. Every function guards on
-// `isSupabaseConfigured` and returns { data: null, error } with
-// code 'not-configured' when the .env keys are missing — never
-// throws for configuration problems. Table / column names match
-// supabase/schema.sql EXACTLY; row types stay snake_case, return
-// values are the app's camelCase types from src/types.
+// ID MODEL (Phase 3): the app keeps its text ids (orders stay
+// 'JV-XXXXXX', areas 'area-01'). People are the exception — the
+// DB identity IS the auth profile uuid, so in configured mode
+// the app-facing User.id / Rider.userId / Affiliate.userId /
+// StaffMember.id ARE profile uuids, and orders.customer_id /
+// orders.rider_id store those same uuids. Extension tables
+// (rider_profiles…) are keyed by that uuid; no separate mapping
+// table is needed — profiles is the lookup.
+//
+// Every function guards on `isSupabaseConfigured` and returns
+// { data: null, error } with code 'not-configured' when the keys
+// are missing — never throws for configuration problems. Table /
+// column names match supabase/schema.sql + schema_phase3.sql
+// EXACTLY; row types stay snake_case, return values are the
+// app's camelCase types from src/types.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -23,6 +34,7 @@ import type {
   ActivityLogEntry,
   AdminSettings,
   Affiliate,
+  AffiliateWaitlistEntry,
   AppNotification,
   DeliveryArea,
   DeliveryPass,
@@ -150,6 +162,7 @@ export interface DbOrderRow {
   items: OrderItem[];
   products_total: number | string;
   delivery_fee: number | string;
+  rider_earning: number | string | null; // schema_phase3.sql
   discount_amount: number | string;
   promo_code: string | null;
   final_total: number | string;
@@ -292,6 +305,7 @@ export interface DbRiderProfileRow {
   total_earnings: number | string;
   rating: number | string;
   pending_payout: number | string;
+  duty_on: boolean; // schema_phase3.sql
   joined_at: string;
 }
 
@@ -395,6 +409,7 @@ export const mapOrderRow = (r: DbOrderRow): Order => ({
   items: r.items ?? [],
   productsTotal: num(r.products_total),
   deliveryFee: num(r.delivery_fee),
+  riderEarning: optNum(r.rider_earning),
   discountAmount: num(r.discount_amount),
   promoCode: opt(r.promo_code),
   finalTotal: num(r.final_total),
@@ -572,6 +587,7 @@ export const mapRiderRows = (r: DbRiderProfileRow, p: DbProfileRow): Rider => ({
   rating: num(r.rating),
   joinedAt: r.joined_at,
   pendingPayout: num(r.pending_payout),
+  dutyOn: r.duty_on,
 });
 
 export const mapAffiliateRows = (r: DbAffiliateProfileRow, p: DbProfileRow): Affiliate => ({
@@ -614,20 +630,26 @@ export function fetchAreas(): Promise<BackendResult<DeliveryArea[]>> {
   });
 }
 
+function areaPayload(area: DeliveryArea) {
+  return {
+    id: area.id,
+    name_bn: area.nameBn,
+    name_en: area.nameEn,
+    fee: area.fee,
+    zone: area.zone,
+    group_name: area.group ?? null,
+    is_served: area.isServed ?? true,
+  };
+}
+
 export function updateArea(area: DeliveryArea): Promise<BackendResult<DeliveryArea>> {
   return run(async (db) => {
+    const { id, ...rest } = areaPayload(area);
     const row = unwrap(
       await db
         .from('areas')
-        .update({
-          name_bn: area.nameBn,
-          name_en: area.nameEn,
-          fee: area.fee,
-          zone: area.zone,
-          group_name: area.group ?? null,
-          is_served: area.isServed ?? true,
-        })
-        .eq('id', area.id)
+        .update(rest)
+        .eq('id', id)
         .select()
         .single(),
     ) as DbAreaRow;
@@ -878,6 +900,7 @@ function orderPayload(o: Order) {
     items: o.items,
     products_total: o.productsTotal,
     delivery_fee: o.deliveryFee,
+    rider_earning: o.riderEarning ?? null,
     discount_amount: o.discountAmount,
     promo_code: o.promoCode ?? null,
     final_total: o.finalTotal,
@@ -1583,6 +1606,7 @@ export function updateProfile(profile: Profile): Promise<BackendResult<Profile>>
           name: profile.name,
           name_bn: profile.nameBn,
           mobile: profile.mobile,
+          alt_mobile: profile.altMobile ?? null,
           avatar_url: profile.avatarUrl ?? null,
           delivery_area_id: profile.deliveryAreaId ?? null,
           is_verified: profile.isVerified,
@@ -1664,6 +1688,7 @@ export function addRider(rider: Rider): Promise<BackendResult<Rider>> {
           total_earnings: rider.totalEarnings,
           rating: rider.rating,
           pending_payout: rider.pendingPayout,
+          duty_on: rider.dutyOn ?? true,
         })
         .select()
         .single(),
@@ -1689,6 +1714,7 @@ export function updateRider(rider: Rider): Promise<BackendResult<Rider>> {
           total_earnings: rider.totalEarnings,
           rating: rider.rating,
           pending_payout: rider.pendingPayout,
+          duty_on: rider.dutyOn ?? true,
         })
         .eq('profile_id', rider.userId)
         .select()
@@ -1865,4 +1891,209 @@ export function updateStaff(member: StaffMember): Promise<BackendResult<StaffMem
     }
     return fetched.data;
   });
+}
+
+// ============================================================
+// Affiliate waitlist (ADD_AFFILIATE_WAITLIST) — schema_phase3.sql
+// The programme is closed at launch; entry points collect emails
+// here. Email is UNIQUE in the DB, mirroring the app reducer's
+// trim/lowercase/dedupe behaviour.
+// ============================================================
+
+export interface DbAffiliateWaitlistRow {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
+export const mapAffiliateWaitlistRow = (
+  r: DbAffiliateWaitlistRow,
+): AffiliateWaitlistEntry => ({
+  email: r.email,
+  at: r.created_at,
+});
+
+export function fetchAffiliateWaitlist(): Promise<
+  BackendResult<AffiliateWaitlistEntry[]>
+> {
+  return run(async (db) => {
+    const rows = unwrap(
+      await db
+        .from('affiliate_waitlist')
+        .select('*')
+        .order('created_at', { ascending: true }),
+    ) as DbAffiliateWaitlistRow[];
+    return rows.map(mapAffiliateWaitlistRow);
+  });
+}
+
+export function addAffiliateWaitlistEmail(
+  email: string,
+): Promise<BackendResult<AffiliateWaitlistEntry>> {
+  const clean = email.trim().toLowerCase();
+  return run(async (db) => {
+    const res = await db
+      .from('affiliate_waitlist')
+      .insert({ email: clean })
+      .select()
+      .single();
+    if (res.error) {
+      // Already on the list — the app treats duplicates as a
+      // no-op success, so do the same here.
+      if (/duplicate key|unique/i.test(res.error.message)) {
+        return { email: clean, at: new Date().toISOString() };
+      }
+      throw new Error(res.error.message);
+    }
+    return mapAffiliateWaitlistRow(res.data as DbAffiliateWaitlistRow);
+  });
+}
+
+// ============================================================
+// First-run seeding (admin action: "সিড ডেটা বসান")
+// Inserts the starter catalogue from src/data constants into
+// EMPTY tables only — every table is checked first, so running
+// it twice (or after seed.sql already loaded areas) changes
+// nothing. Settings are written only when no settings row
+// exists yet. The seed constants are passed in by the caller so
+// this layer stays free of data imports.
+// ============================================================
+
+export interface SeedBundle {
+  areas: DeliveryArea[];
+  products: Product[];
+  restaurants: Restaurant[];
+  promos: PromoCode[];
+  settings: AdminSettings;
+}
+
+export interface SeedSummary {
+  areas: number;
+  products: number;
+  restaurants: number;
+  menuItems: number;
+  promos: number;
+  settings: boolean;
+}
+
+export function seedStarterData(
+  bundle: SeedBundle,
+): Promise<BackendResult<SeedSummary>> {
+  return run(async (db) => {
+    const summary: SeedSummary = {
+      areas: 0,
+      products: 0,
+      restaurants: 0,
+      menuItems: 0,
+      promos: 0,
+      settings: false,
+    };
+    const isEmpty = async (table: string): Promise<boolean> => {
+      const res = await db
+        .from(table)
+        .select('*', { count: 'exact', head: true });
+      if (res.error) throw new Error(res.error.message);
+      return (res.count ?? 0) === 0;
+    };
+
+    if ((await isEmpty('areas')) && bundle.areas.length > 0) {
+      unwrap(
+        await db.from('areas').insert(bundle.areas.map(areaPayload)).select('id'),
+      );
+      summary.areas = bundle.areas.length;
+    }
+
+    if ((await isEmpty('products')) && bundle.products.length > 0) {
+      unwrap(
+        await db
+          .from('products')
+          .insert(bundle.products.map(productPayload))
+          .select('id'),
+      );
+      summary.products = bundle.products.length;
+    }
+
+    if ((await isEmpty('restaurants')) && bundle.restaurants.length > 0) {
+      unwrap(
+        await db
+          .from('restaurants')
+          .insert(bundle.restaurants.map(restaurantPayload))
+          .select('id'),
+      );
+      summary.restaurants = bundle.restaurants.length;
+      const items = bundle.restaurants.flatMap((r) => r.menuItems);
+      if (items.length > 0) {
+        unwrap(
+          await db.from('menu_items').insert(items.map(menuItemPayload)).select('id'),
+        );
+        summary.menuItems = items.length;
+      }
+    }
+
+    if ((await isEmpty('promos')) && bundle.promos.length > 0) {
+      unwrap(
+        await db.from('promos').insert(bundle.promos.map(promoPayload)).select('code'),
+      );
+      summary.promos = bundle.promos.length;
+    }
+
+    const existingSettings = await fetchAdminSettings();
+    if (!existingSettings.data) {
+      const saved = await updateAdminSettings(bundle.settings);
+      if (saved.error) throw new Error(saved.error.message);
+      summary.settings = true;
+    }
+
+    return summary;
+  });
+}
+
+// ============================================================
+// Realtime subscriptions (Phase 3) — orders + notifications.
+// Requires schema_phase3.sql (tables added to the
+// supabase_realtime publication). RLS still applies: a client
+// only receives change events for rows it may SELECT.
+// DELETE events are ignored by design (order deletes are
+// admin-only and rare; the next hydration covers them).
+// Returns an unsubscribe function (safe no-op unconfigured).
+// ============================================================
+
+export function subscribeToOrders(onChange: (order: Order) => void): () => void {
+  if (!isSupabaseConfigured || !supabase) return () => undefined;
+  const db = supabase;
+  const channel = db
+    .channel('jovro-orders-live')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'orders' },
+      (payload) => {
+        if (payload.eventType === 'DELETE') return;
+        onChange(mapOrderRow(payload.new as DbOrderRow));
+      },
+    )
+    .subscribe();
+  return () => {
+    void db.removeChannel(channel);
+  };
+}
+
+export function subscribeToNotifications(
+  onChange: (notification: AppNotification) => void,
+): () => void {
+  if (!isSupabaseConfigured || !supabase) return () => undefined;
+  const db = supabase;
+  const channel = db
+    .channel('jovro-notifications-live')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'notifications' },
+      (payload) => {
+        if (payload.eventType === 'DELETE') return;
+        onChange(mapNotificationRow(payload.new as DbNotificationRow));
+      },
+    )
+    .subscribe();
+  return () => {
+    void db.removeChannel(channel);
+  };
 }

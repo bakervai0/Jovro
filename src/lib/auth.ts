@@ -11,7 +11,8 @@
 // `isSupabaseConfigured` first and returns a typed
 // 'not-configured' error instead of throwing — the app keeps
 // running on demo state until Baker sets the .env keys.
-// Nothing in the app calls these yet (Phase 3 wires them in).
+// Phase 3: the auth screens + AppContext call these whenever
+// `isSupabaseConfigured` is true; demo mode never touches them.
 // ============================================================
 
 import type {
@@ -52,6 +53,7 @@ export interface DbProfileRow {
   name: string;
   name_bn: string;
   mobile: string;
+  alt_mobile: string | null;
   avatar_url: string | null;
   delivery_area_id: string | null;
   is_verified: boolean;
@@ -70,6 +72,7 @@ export interface Profile {
   name: string;
   nameBn: string;
   mobile: string;
+  altMobile?: string;
   avatarUrl?: string;
   deliveryAreaId?: string;
   isVerified: boolean;
@@ -89,6 +92,7 @@ export function mapProfileRow(row: DbProfileRow): Profile {
     name: row.name,
     nameBn: row.name_bn,
     mobile: row.mobile,
+    altMobile: row.alt_mobile ?? undefined,
     avatarUrl: row.avatar_url ?? undefined,
     deliveryAreaId: row.delivery_area_id ?? undefined,
     isVerified: row.is_verified,
@@ -108,6 +112,7 @@ export function profileToUser(p: Profile): User {
     name: p.name,
     nameBn: p.nameBn,
     mobile: p.mobile,
+    altMobile: p.altMobile,
     email: p.email,
     role: p.role,
     avatarUrl: p.avatarUrl,
@@ -225,6 +230,27 @@ export async function signOut(): Promise<{ success: boolean; error: BackendError
   if (!isSupabaseConfigured || !db) return { success: false, error: NOT_CONFIGURED_ERROR };
   try {
     const { error } = await db.auth.signOut();
+    if (error) return { success: false, error: toBackendError(error, 'auth') };
+    return { success: true, error: null };
+  } catch (e) {
+    return { success: false, error: toBackendError(e, 'auth') };
+  }
+}
+
+// ── Password reset (email link — configured mode only) ──────
+/**
+ * Send a Supabase password-reset email. The link lands back on
+ * the app (Supabase "Site URL" / redirect allow-list decides the
+ * exact page); completing the recovery session in-app is part
+ * of live verification once a project exists.
+ */
+export async function resetPassword(
+  email: string,
+): Promise<{ success: boolean; error: BackendError | null }> {
+  const db = supabase;
+  if (!isSupabaseConfigured || !db) return { success: false, error: NOT_CONFIGURED_ERROR };
+  try {
+    const { error } = await db.auth.resetPasswordForEmail(email);
     if (error) return { success: false, error: toBackendError(error, 'auth') };
     return { success: true, error: null };
   } catch (e) {
