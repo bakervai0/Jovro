@@ -10,7 +10,7 @@ const FEATURES = [
     titleEn: 'Fresh from Goshala Bazar & local vendors',
   },
   {
-    icon: 'currency_taka',
+    icon: 'payments',
     color: 'text-secondary bg-secondary/10',
     titleBn: 'বাজারের আসল দাম, শুধু ডেলিভারি ফি',
     titleEn: 'Zero product markup (Fixed fee starting ৳১৫)',
@@ -71,7 +71,7 @@ export default function OnboardScreen() {
         {/* Tagline */}
         <div className="text-center px-8">
           <p className="text-body-lg font-semibold text-on-surface">বাজার আর খাবার, ঘরে বসেই</p>
-          <p className="text-label-md text-on-surface-variant mt-0.5">Groceries &amp; food, delivered to your door</p>
+          <p className="text-label-md text-on-surface-variant mt-0.5">Groceries & food, delivered to your door</p>
         </div>
       </div>
 
