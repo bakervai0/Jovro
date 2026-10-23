@@ -31,8 +31,9 @@ export const DEMO_USERS: Record<string, User> = {
     createdAt: '2024-01-05', referralCode: 'IMRAN30',
   },
   admin: {
-    id: 'u-005', name: 'Shusmita Rani', nameBn: 'শুসমিতা রানী',
-    mobile: '01555000001', role: 'admin',
+    // The owner himself (Oct 23): Baker is admin + operator.
+    id: 'u-005', name: 'Baker', nameBn: 'Baker',
+    mobile: '01727047005', email: 'bakervai.bdl@gmail.com', role: 'admin',
     deliveryAreaId: 'area-01', isVerified: true,
     createdAt: '2023-11-01', referralCode: 'ADMIN00',
   },

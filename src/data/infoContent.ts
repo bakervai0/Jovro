@@ -1,15 +1,16 @@
 // ============================================================
 // Jovro — Info page content (D14–D19) + operator contact (D15)
-// Sample wording for a demo build; contact values are clearly
-// sample values until the operator's real number is published.
+// Operator contact = the owner's real details (Oct 23): Baker
+// is the admin AND the operator at launch, so every call /
+// WhatsApp / email link in the app points to him directly.
 // ============================================================
 
 export const OPERATOR = {
-  phoneDisplayBn: '০১৭০০-০০০০০০ (নমুনা)',
-  phoneDisplayEn: '01700-000000 (sample)',
-  phoneTel: 'tel:+8801700000000',
-  whatsappUrl: 'https://wa.me/8801700000000',
-  email: 'support@jovro.com',
+  phoneDisplayBn: '০১৭২৭-০৪৭০০৫',
+  phoneDisplayEn: '01727-047005',
+  phoneTel: 'tel:+8801727047005',
+  whatsappUrl: 'https://wa.me/8801727047005',
+  email: 'bakervai.bdl@gmail.com',
   hoursBn: 'প্রতিদিন সকাল ৬:০০–দুপুর ১:৩০ ও বিকেল ৪:৩০–রাত ১০:৩০ (দুই শিফটে)',
   hoursEn: 'Every day 6:00 AM–1:30 PM and 4:30–10:30 PM (two shifts)',
   addressBn: 'গোশালা বাজার, লালমনিরহাট সদর, লালমনিরহাট',
