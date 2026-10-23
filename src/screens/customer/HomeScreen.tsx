@@ -587,8 +587,20 @@ function FlashCard({ product, off }: { product: Product; off: number }) {
 function FlashSale() {
   const { state } = useApp();
   const bn = state.lang === 'bn';
-  const items = FLASH_ITEMS
-    .map(f => ({ product: state.products.find(p => p.id === f.id), off: f.off }))
+  const settings = state.adminSettings;
+  // Wired to adminSettings (AdminPromotions flash manager +
+  // AdminProducts form toggle write the same slice): the section
+  // hides when the admin switches the flash sale off, and the
+  // product list comes from settings.flashSaleProductIds. The
+  // three Stitch design-8 items keep their design discounts;
+  // admin-added products use the manager's global discount %.
+  if (!settings.flashSaleActive) return null;
+  const designOff = new Map(FLASH_ITEMS.map(f => [f.id, f.off]));
+  const ids = settings.flashSaleProductIds.length
+    ? settings.flashSaleProductIds
+    : FLASH_ITEMS.map(f => f.id);
+  const items = ids
+    .map(id => ({ product: state.products.find(p => p.id === id), off: designOff.get(id) ?? settings.flashSaleDiscount }))
     .filter((x): x is { product: Product; off: number } => !!x.product);
   if (!items.length) return null;
 
