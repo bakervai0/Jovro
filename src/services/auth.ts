@@ -19,10 +19,13 @@ export async function requestOtp(phone: string): Promise<{ success: boolean }> {
   return { success: true };
 }
 
-export async function verifyOtp(phone: string, otp: string): Promise<{ success: boolean; user?: User; error?: string }> {
+export async function verifyOtp(phone: string, otp: string, name?: string): Promise<{ success: boolean; user?: User; error?: string }> {
   await delay(600);
   if (otp !== '1234') return { success: false, error: 'invalid_otp' };
-  const user = DEMO_USERS.customer;
+  // A name typed on the OTP screen belongs to the session user —
+  // never silently replace it with the demo profile's name.
+  const trimmed = name?.trim();
+  const user = trimmed ? { ...DEMO_USERS.customer, name: trimmed, nameBn: trimmed } : DEMO_USERS.customer;
   return { success: true, user };
 }
 

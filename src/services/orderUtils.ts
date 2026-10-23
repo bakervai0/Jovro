@@ -1,4 +1,4 @@
-import type { Order, OrderStatus, Lang } from '../types';
+import type { Order, OrderStatus, Lang, CartItem, TimeSlot } from '../types';
 
 // ============================================================
 // Shared order helpers for the rider / operator / affiliate
@@ -91,4 +91,51 @@ let uidCounter = 0;
 export function uid(prefix: string): string {
   uidCounter += 1;
   return `${prefix}-${Date.now().toString(36)}${uidCounter.toString(36)}`;
+}
+
+// ── Service hours (Asia/Dhaka) ────────────────────────────────
+// Baker's split shifts: 06:00–13:30 and 16:30–22:30, always
+// evaluated in Dhaka time regardless of the device timezone.
+export const SERVICE_WINDOWS_MIN = [
+  { start: 6 * 60, end: 13 * 60 + 30 },
+  { start: 16 * 60 + 30, end: 22 * 60 + 30 },
+];
+
+export function dhakaMinutesNow(d: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const h = Number(parts.find(p => p.type === 'hour')?.value ?? 0);
+  const m = Number(parts.find(p => p.type === 'minute')?.value ?? 0);
+  return (h % 24) * 60 + m;
+}
+
+export function isWithinServiceHours(d: Date = new Date()): boolean {
+  const mins = dhakaMinutesNow(d);
+  return SERVICE_WINDOWS_MIN.some(w => mins >= w.start && mins < w.end);
+}
+
+/** Checkout slot that matches the current Dhaka time of day. */
+export function defaultSlotForNow(d: Date = new Date()): TimeSlot {
+  const mins = dhakaMinutesNow(d);
+  if (mins < SERVICE_WINDOWS_MIN[0].end) return 'morning';
+  if (mins < SERVICE_WINDOWS_MIN[1].start) return 'afternoon';
+  if (mins < SERVICE_WINDOWS_MIN[1].end) return 'evening';
+  return 'morning'; // after close → tomorrow's first run
+}
+
+// ── Cart line lookup (price-split lines) ──────────────────────
+// The same product can sit in the cart on several lines (regular
+// vs flash-sale price, pack variants `${id}:${pack}`). Steppers
+// must act on the real line id, never assume id === productId.
+/** Line for a product at one exact unit price (e.g. flash price). */
+export function cartLineForPrice(cart: CartItem[], productId: string, price: number): CartItem | undefined {
+  return cart.find(i => (i.productId ?? i.id) === productId && i.price === price);
+}
+
+/** The product's primary line: exact-id line first, else any line
+ * carrying the productId (pack / price-split variants). */
+export function primaryCartLine(cart: CartItem[], productId: string): CartItem | undefined {
+  return cart.find(i => i.id === productId)
+    ?? cart.find(i => (i.productId ?? i.id) === productId);
 }
